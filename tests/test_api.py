@@ -60,6 +60,13 @@ def test_http_api_health_and_evaluation():
         assert result["values"]["D1"] == 4
         assert result["errors"] == {}
 
+        # Dashboard diagnostic tabs use these compiler-stage outputs.
+        assert result["tokens"]["B1"]
+        assert result["tokens"]["B1"][0]["type"] == "Equals"
+        assert "BinaryOp(*)" in result["asts"]["B1"]
+        assert result["dependencies"]["B1"] == ["A1"]
+        assert "evaluationOrder" in result
+
         _, cycle = request_json(base_url + "/evaluate", {
             "formulas": {"A1": "=B1+1", "B1": "=A1+1"},
             "values": {}
