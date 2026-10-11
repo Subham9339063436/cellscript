@@ -65,8 +65,10 @@ void SpreadsheetEvaluator::visit(const std::string& raw) {
     auto it=cells_.find(cell);
     if(it!=cells_.end()) {
       for(const auto& dep:it->second.dependsOn) {
+        // Only formula cells participate in graph traversal. Empty cells inside
+        // aggregate ranges are valid blanks; direct missing references are diagnosed
+        // when the AST evaluator resolves them.
         if(cells_.count(dep)) visit(dep);
-        else if(!inputs_.count(dep)) errors_[cell]="Referenced cell "+dep+" has no value";
       }
     }
     stack_.pop_back(); visitState_[cell]=2; order_.push_back(cell);
