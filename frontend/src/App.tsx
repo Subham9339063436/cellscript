@@ -42,6 +42,7 @@ function initialResult(): ApiResult {
 export default function App() {
   const [drafts, setDrafts] = useState<Record<string, string>>(INITIAL);
   const [selected, setSelected] = useState("D1");
+  const [activeTab, setActiveTab] = useState<DashboardTab>("spreadsheet");
   const [result, setResult] = useState<ApiResult>(initialResult());
   const [status, setStatus] = useState<Status>("connecting");
   const [lastCalculated, setLastCalculated] = useState<Date | null>(null);
