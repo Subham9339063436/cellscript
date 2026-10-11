@@ -49,7 +49,7 @@ def test_http_api_health_and_evaluation():
                 "A1": "=10",
                 "B1": "=A1*2",
                 "C1": "=SUM(A1:B1)",
-                "D1": "=COUNT(A1:E1)"
+                "D1": "=COUNT(A1:C1,E1)"
             },
             "values": {"E1": 8}
         })
