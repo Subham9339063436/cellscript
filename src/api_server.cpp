@@ -335,7 +335,7 @@ int main(int argc, char** argv) {
 
     sockaddr_in address{};
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_ANY);
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     address.sin_port = htons(static_cast<unsigned short>(port));
     if (::bind(server, reinterpret_cast<sockaddr*>(&address), sizeof(address)) < 0) {
         std::cerr << "Could not bind port " << port << ": " << std::strerror(errno) << "\n";
