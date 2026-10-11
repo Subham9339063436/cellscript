@@ -30,15 +30,10 @@ The native API server listens on port 8080 by default. It serves `GET /health` a
 }
 ```
 
-The response includes:
-- `values`: successfully computed formula-cell numeric results.
-- `errors`: cell-specific diagnostics.
-- `evaluationOrder`: dependency-first order determined by DFS.
-
-The frontend sends the full workbook after an edit and renders returned values and errors. For a local class demonstration, the API binds to all interfaces on the host but is intended for trusted local use; do not expose it directly to the public internet.
+The response includes `values`, `errors`, and `evaluationOrder`. The frontend sends the full workbook after an edit and renders returned values and errors. The server uses a small POSIX socket implementation and a purpose-built parser for the expected JSON request shape. It is intended for local development and trusted networks, not direct public-internet exposure.
 
 ## 7. Frontend
 The React/Vite interface shows a 10-column by 15-row grid, a formula bar, selected-cell highlighting, error indicators, sample values/formulas, and automatic recalculation through the API. Numeric entries are sent as input values; formula strings beginning with `=` are sent through the compiler.
 
 ## 8. Testing
-Run `make test` for the original Phase 1 lexer/parser regression tests and C++ evaluator tests. The evaluator tests cover forward references, arithmetic and aggregates, blank range cells, cycles, missing direct references, division by zero and numeric input cells. GitHub Actions also builds the C++ targets and frontend bundle.
+Run `make test` for Phase 1 lexer/parser regression tests, C++ evaluator tests and HTTP health/evaluation tests. Coverage includes forward references, aggregate functions, blank range cells, cycles, missing direct references, division by zero, numeric input cells and JSON API evaluation. GitHub Actions also builds the frontend bundle.
