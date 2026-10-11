@@ -5,6 +5,12 @@
 #include <string>
 #include <vector>
 
+struct AnalysisToken {
+    std::string type;
+    std::string text;
+    int column = 1;
+};
+
 struct CellEntry {
     std::string formula;
     ASTPtr ast;
@@ -12,12 +18,17 @@ struct CellEntry {
     double value = 0.0;
     bool hasValue = false;
     std::string error;
+    std::vector<AnalysisToken> tokens;
+    std::string astText;
 };
 
 struct EvaluationResult {
     std::map<std::string, double> values;
     std::map<std::string, std::string> errors;
     std::vector<std::string> evaluationOrder;
+    std::map<std::string, std::vector<AnalysisToken>> tokens;
+    std::map<std::string, std::string> asts;
+    std::map<std::string, std::vector<std::string>> dependencies;
 };
 
 class SpreadsheetEvaluator {
