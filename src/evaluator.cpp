@@ -91,10 +91,13 @@ std::vector<double> SpreadsheetEvaluator::expandRange(const std::string& start,c
 double SpreadsheetEvaluator::getCellValue(const std::string& raw,const std::string& owner) {
     (void)owner;
     const std::string cell=normalizeCell(raw);
+    // Errors take precedence over input lookup (for example, a conflicting
+    // formula and constant assigned to the same cell).
+    auto error=errors_.find(cell);
+    if(error!=errors_.end()) throw std::runtime_error(error->second);
     auto input=inputs_.find(cell); if(input!=inputs_.end()) return input->second;
     auto it=cells_.find(cell);
     if(it==cells_.end()) throw std::runtime_error("Referenced cell "+cell+" has no value");
-    if(errors_.count(cell)) throw std::runtime_error(errors_.at(cell));
     if(!it->second.ast) throw std::runtime_error("Invalid formula in "+cell);
     try { it->second.value=evaluateNode(it->second.ast,cell); it->second.hasValue=true; return it->second.value; }
     catch(const std::exception& e) {
