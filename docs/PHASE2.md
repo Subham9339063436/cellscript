@@ -13,7 +13,7 @@ Depth-first search marks cells unseen, visiting or complete. Encountering a visi
 Formula dependencies are visited before their consumers. The AST evaluator handles arithmetic, unary minus, references, ranges within aggregate functions, and SUM, AVG, MAX, MIN and COUNT.
 
 ## Error handling
-The engine reports lexical and syntax failures, missing cell references, cycles, division by zero, invalid cell addresses, excessive ranges and non-finite results. Blank cells in aggregate ranges contribute zero; COUNT counts the cells in the selected rectangle.
+The engine reports lexical and syntax failures, missing cell references, cycles, division by zero, invalid cell addresses, excessive ranges and non-finite results. Blank cells are ignored in aggregate ranges; an empty SUM returns zero, AVG/MAX/MIN require at least one populated numeric value, and COUNT counts only populated numeric cells.
 
 ## Current boundary
 This phase adds the C++ evaluation core and CLI demo. HTTP API and React grid integration remain future work and are not claimed as complete.
