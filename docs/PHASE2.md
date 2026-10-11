@@ -1,19 +1,44 @@
-# CellScript Phase 2 — Implementation Notes
+# CellScript Phase 2 — Implementation and Design Notes
 
-## Symbol table
-Each formula cell is recorded with its source formula, AST, extracted dependency set, optional cached value and error status. Numeric input values may be supplied separately.
+## 1. Symbol table
+Each formula cell is represented by a `CellEntry` containing its source formula, AST, dependency set, cached value and error text. Numeric input cells are provided separately.
 
-## Dependency analysis
-The AST is traversed recursively. Cell-reference nodes add one dependency; range nodes expand to the cells in the rectangular range. This allows formula evaluation to respect dependencies rather than entry order.
+## 2. Dependency extraction
+The compiler traverses each AST. Cell-reference nodes add the referenced address; ranges expand to the addresses inside their rectangular bounds. Formula cells in those ranges become graph dependencies. Empty cells in aggregate ranges remain blank rather than generating missing-reference errors.
 
-## Cycle detection
-Depth-first search marks cells unseen, visiting or complete. Encountering a visiting node identifies a circular dependency; the error includes a cycle chain.
+## 3. Cycle detection and evaluation order
+Depth-first search tracks each formula cell as unseen, visiting or complete. Reaching a visiting node identifies a back edge, and the evaluator reports the circular path. Cells are appended to the evaluation order after their formula dependencies, so the resulting order is dependency-first.
 
-## Evaluation
-Formula dependencies are visited before their consumers. The AST evaluator handles arithmetic, unary minus, references, ranges within aggregate functions, and SUM, AVG, MAX, MIN and COUNT.
+## 4. AST evaluator
+The evaluator handles numeric constants, references, unary minus (represented by the parser as zero minus the operand), arithmetic operations and function calls. Division by zero is reported as a cell error. Non-finite numeric results are rejected.
 
-## Error handling
-The engine reports lexical and syntax failures, missing cell references, cycles, division by zero, invalid cell addresses, excessive ranges and non-finite results. Blank cells are ignored in aggregate ranges; an empty SUM returns zero, AVG/MAX/MIN require at least one populated numeric value, and COUNT counts only populated numeric cells.
+## 5. Built-in functions
+- `SUM`: sum populated numeric arguments; an empty input gives zero.
+- `AVG`: average populated numeric arguments; requires at least one value.
+- `MAX` / `MIN`: largest/smallest populated numeric argument; requires at least one value.
+- `COUNT`: count populated numeric values. Empty cells in ranges are ignored.
 
-## Current boundary
-This phase adds the C++ evaluation core and CLI demo. HTTP API and React grid integration remain future work and are not claimed as complete.
+Ranges are capped at 100,000 cells to avoid unbounded expansion. Ranges may be written with either endpoint order.
+
+## 6. HTTP API
+The native API server listens on port 8080 by default. It serves `GET /health` and `POST /evaluate` and accepts JSON of this shape:
+
+```json
+{
+  "formulas": { "A1": "=10", "B1": "=A1*2" },
+  "values": { "C1": 4 }
+}
+```
+
+The response includes:
+- `values`: successfully computed formula-cell numeric results.
+- `errors`: cell-specific diagnostics.
+- `evaluationOrder`: dependency-first order determined by DFS.
+
+The frontend sends the full workbook after an edit and renders returned values and errors. For a local class demonstration, the API binds to all interfaces on the host but is intended for trusted local use; do not expose it directly to the public internet.
+
+## 7. Frontend
+The React/Vite interface shows a 10-column by 15-row grid, a formula bar, selected-cell highlighting, error indicators, sample values/formulas, and automatic recalculation through the API. Numeric entries are sent as input values; formula strings beginning with `=` are sent through the compiler.
+
+## 8. Testing
+Run `make test` for the original Phase 1 lexer/parser regression tests and C++ evaluator tests. The evaluator tests cover forward references, arithmetic and aggregates, blank range cells, cycles, missing direct references, division by zero and numeric input cells. GitHub Actions also builds the C++ targets and frontend bundle.
