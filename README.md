@@ -86,7 +86,7 @@ frontend/          React + TypeScript + Vite spreadsheet UI
 docs/PHASE2.md     Design, algorithms and API notes
 ```
 
-The API uses a small POSIX socket server with a constrained JSON reader to keep the project self-contained; it does not require a separate HTTP library. Build the server on macOS or Linux.
+The API uses a small POSIX socket server with a constrained JSON reader to keep the project self-contained; it does not require a separate HTTP library. The server binds to loopback (localhost) on macOS or Linux by default.
 
 ## Compiler pipeline
 
