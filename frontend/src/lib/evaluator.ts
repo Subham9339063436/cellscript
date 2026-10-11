@@ -2,10 +2,14 @@ export type WorkbookRequest = {
   formulas?: Record<string, string>;
   values?: Record<string, number>;
 };
+export type AnalysisToken = { type: string; text: string; column: number };
 export type WorkbookResponse = {
   values: Record<string, number>;
   errors: Record<string, string>;
   evaluationOrder: string[];
+  tokens: Record<string, AnalysisToken[]>;
+  asts: Record<string, string>;
+  dependencies: Record<string, string[]>;
 };
 
 type TokenType = "number" | "cell" | "function" | "operator" | "lparen" | "rparen" | "comma" | "colon" | "eof";
@@ -208,6 +212,19 @@ function collectDependencies(node: Node, out: Set<string>): void {
   }
 }
 
+function astToText(node: Node, depth = 0): string {
+  const pad = "  ".repeat(depth);
+  switch (node.kind) {
+    case "number": return pad + "Number(" + node.value + ")\\n";
+    case "cell": return pad + "CellRef(" + node.cell + ")\\n";
+    case "range": return pad + "Range(" + node.start + ":" + node.end + ")\\n";
+    case "binary": return pad + "BinaryOp(" + node.op + ")\\n" +
+      astToText(node.left, depth + 1) + astToText(node.right, depth + 1);
+    case "call": return pad + "FuncCall(" + node.name + ")\\n" +
+      node.args.map(arg => astToText(arg, depth + 1)).join("");
+  }
+}
+
 export function evaluateWorkbook(input: WorkbookRequest): WorkbookResponse {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Request body must be a JSON object");
   const formulaInput = input.formulas ?? {};
@@ -231,16 +248,27 @@ export function evaluateWorkbook(input: WorkbookRequest): WorkbookResponse {
   }
 
   const errors: Record<string, string> = {};
+  const tokenOutput: Record<string, AnalysisToken[]> = {};
+  const astOutput: Record<string, string> = {};
+  const dependencyOutput: Record<string, string[]> = {};
   const asts = new Map<string, Node>();
   const deps = new Map<string, Set<string>>();
   for (const [cell, formula] of formulas) {
     if (inputs.has(cell)) { errors[cell] = "Cell cannot contain both a constant value and a formula"; continue; }
     try {
-      const ast = new Parser(tokenize(formula)).parse();
+      const tokenList = tokenize(formula);
+      tokenOutput[cell] = tokenList.map(token => ({
+        type: token.type,
+        text: token.type === "eof" ? "EOF" : token.text,
+        column: token.column
+      }));
+      const ast = new Parser(tokenList).parse();
       asts.set(cell, ast);
+      astOutput[cell] = astToText(ast).trimEnd();
       const set = new Set<string>();
       collectDependencies(ast, set);
       deps.set(cell, set);
+      dependencyOutput[cell] = [...set].sort();
     } catch (error) {
       errors[cell] = error instanceof Error ? error.message : String(error);
     }
@@ -332,5 +360,12 @@ export function evaluateWorkbook(input: WorkbookRequest): WorkbookResponse {
     if (errors[cell]) continue;
     try { getValue(cell); } catch { /* diagnostic is retained in errors */ }
   }
-  return { values, errors, evaluationOrder };
+  return {
+    values,
+    errors,
+    evaluationOrder,
+    tokens: tokenOutput,
+    asts: astOutput,
+    dependencies: dependencyOutput
+  };
 }
