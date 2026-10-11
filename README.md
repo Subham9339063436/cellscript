@@ -25,7 +25,7 @@ Cell definitions → Lexer → Parser → AST
 - Division-by-zero and parser/lexer errors
 - Range safety limit of 100,000 cells
 
-Blank cells within aggregate ranges contribute zero; COUNT counts cells in a range. Direct references to missing cells are errors.
+Blank cells within aggregate ranges are ignored by aggregates; SUM of an empty range is zero, and COUNT counts populated numeric cells. Direct references to missing cells are errors.
 
 ## Build and test
 
