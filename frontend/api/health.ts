@@ -1,7 +1,6 @@
-export const runtime = "nodejs";
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-export async function GET(): Promise<Response> {
-  return Response.json({ status: "ok", service: "CellScript Vercel API" }, {
-    headers: { "Cache-Control": "no-store" }
-  });
+export default function handler(_request: VercelRequest, response: VercelResponse) {
+  response.setHeader("Cache-Control", "no-store");
+  return response.status(200).json({ status: "ok", service: "CellScript Vercel API" });
 }
