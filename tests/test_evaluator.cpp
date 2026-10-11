@@ -30,7 +30,11 @@ int main() {
         });
         require(ranges.errors.empty(), "blank range cells must not be treated as missing-reference errors");
         require(near(ranges.values.at("A1"), 0), "SUM of blank cells should be zero");
-        require(near(ranges.values.at("A2"), 3), "COUNT of a three-cell range should be three");
+        require(near(ranges.values.at("A2"), 0), "COUNT should ignore blank cells");
+
+        auto countValues = evaluator.evaluate({{"A1", "=10"}, {"C1", "=COUNT(A1:B1)"}});
+        require(countValues.errors.empty() && near(countValues.values.at("C1"), 1),
+                "COUNT should count populated numeric cells, not blanks");
 
         auto functions = evaluator.evaluate({
             {"A1", "=10"}, {"A2", "=20"}, {"A3", "=30"},
