@@ -124,6 +124,7 @@ export default function App() {
   const selectedValue = cellValue(selected);
   const errorCount = Object.keys(result.errors).length;
   const formulaCells = Object.keys(formulasAndValues.formulas).sort();
+  const inspectionCells = Array.from(new Set([...Object.keys(drafts), selected])).sort();
   const selectedTokens = result.tokens?.[selected] ?? [];
   const selectedDependencies = result.dependencies?.[selected] ?? [];
   const selectedAst = result.asts?.[selected];
@@ -239,7 +240,7 @@ export default function App() {
             <label className="cell-picker">
               <span>INSPECT CELL</span>
               <select value={selected} onChange={event => setSelected(event.target.value)}>
-                {(Object.keys(drafts).length ? Object.keys(drafts).sort() : [selected]).map(cell => (
+                {inspectionCells.map(cell => (
                   <option value={cell} key={cell}>{cell}</option>
                 ))}
               </select>
