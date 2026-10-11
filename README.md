@@ -1,64 +1,49 @@
-# CellScript — Phase 1
+# CellScript — Phase 2
 
-A formula-language compiler for spreadsheet-style expressions, implemented from the Phase 1 specification.
+A spreadsheet formula-language compiler in C++17. Phase 2 extends the lexical analyser, recursive-descent parser and AST with a symbol table, dependency extraction, circular-reference detection, dependency-respecting evaluation and spreadsheet aggregate functions.
 
-## Phase 1 pipeline
-
-```text
-Formula
-  ↓
-Lexer
-  ↓
-Token Stream
-  ↓
-Recursive-Descent Parser
-  ↓
-AST
-```
-
-## Supported grammar
+## Pipeline
 
 ```text
-formula   := "=" expr
-expr      := term (("+" | "-") term)*
-term      := factor (("*" | "/") factor)*
-factor    := NUMBER | cellRef | funcCall | "(" expr ")"
-funcCall  := FUNCNAME "(" argList ")"
-argList   := arg ("," arg)*
-arg       := range | expr
-range     := cellRef ":" cellRef
-cellRef   := LETTER+ DIGIT+
+Cell definitions → Lexer → Parser → AST
+                              ↓
+                 Symbol table + dependencies
+                              ↓
+                  DFS cycle detection
+                              ↓
+                    Ordered evaluation
+                              ↓
+                   Values and cell errors
 ```
 
-Supported functions: `SUM`, `AVG`, `MAX`, `MIN`, `COUNT`.
+## Supported features
+- Arithmetic operators `+`, `-`, `*`, `/`, parentheses and unary minus
+- Cell references such as `A1` and `AA12`
+- Rectangular ranges (including reversed ranges)
+- `SUM`, `AVG`, `MAX`, `MIN`, `COUNT`
+- Forward references, missing-reference checks and cycle detection
+- Division-by-zero and parser/lexer errors
+- Range safety limit of 100,000 cells
 
-## Example
+Blank cells within aggregate ranges contribute zero; COUNT counts cells in a range. Direct references to missing cells are errors.
 
-```text
-=SUM(A1:B3)+C2*2
-```
+## Build and test
 
-The Phase 1 prototype prints the token stream and the generated AST.
-
-## Build and run
+Requires a C++17 compiler, Make, Python 3 and pytest for tests.
 
 ```bash
 make
 make run
-```
-
-Or provide another formula:
-
-```bash
-./build/cellscript "=A1+(B1*C1)"
-```
-
-## Tests
-
-```bash
+make eval
 make test
 ```
 
-## Scope
+Run the original tokeniser/parser demo with:
+```bash
+./build/cellscript "=SUM(A1:B3)+C2*2"
+```
 
-This repository intentionally implements **Phase 1 only**. Symbol-table construction, dependency-graph analysis, cycle detection, topological evaluation, HTTP API, and React UI are planned for later phases according to the project specification.
+Run a sample worksheet through the new evaluator with `make eval`.
+
+## Scope
+Phase 2 currently focuses on the C++ symbol table, semantic dependency analysis and evaluation engine. The HTTP API and React grid are not yet implemented.
