@@ -1,10 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 
+type AnalysisToken = { type: string; text: string; column: number };
 type ApiResult = {
   values: Record<string, number>;
   errors: Record<string, string>;
   evaluationOrder: string[];
+  tokens: Record<string, AnalysisToken[]>;
+  asts: Record<string, string>;
+  dependencies: Record<string, string[]>;
 };
+type DashboardTab = "spreadsheet" | "lexical" | "ast" | "dependencies" | "evaluation";
+type TabDefinition = { id: DashboardTab; number: string; title: string; caption: string };
+const TABS: TabDefinition[] = [
+  { id: "spreadsheet", number: "01", title: "Spreadsheet", caption: "Edit cells" },
+  { id: "lexical", number: "02", title: "Lexical analysis", caption: "Token stream" },
+  { id: "ast", number: "03", title: "AST parsing", caption: "Syntax tree" },
+  { id: "dependencies", number: "04", title: "Dependencies", caption: "Cell graph" },
+  { id: "evaluation", number: "05", title: "Evaluation", caption: "Runtime results" }
+];
 type Status = "connecting" | "online" | "offline";
 
 const API_BASE = (import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "" : "http://localhost:8080")).replace(/\/$/, "");
@@ -23,7 +36,7 @@ function displayNumber(value: number) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 8 }).format(value);
 }
 function initialResult(): ApiResult {
-  return { values: {}, errors: {}, evaluationOrder: [] };
+  return { values: {}, errors: {}, evaluationOrder: [], tokens: {}, asts: {}, dependencies: {} };
 }
 
 export default function App() {
@@ -109,6 +122,13 @@ export default function App() {
   const selectedFormula = drafts[selected] ?? "";
   const selectedValue = cellValue(selected);
   const errorCount = Object.keys(result.errors).length;
+  const formulaCells = Object.keys(formulasAndValues.formulas).sort();
+  const selectedTokens = result.tokens?.[selected] ?? [];
+  const selectedDependencies = result.dependencies?.[selected] ?? [];
+  const selectedAst = result.asts?.[selected];
+  const activeTabInfo = TABS.find(tab => tab.id === activeTab) ?? TABS[0];
+  const validFormulaCount = Object.keys(result.asts ?? {}).length;
+  const tokenCount = selectedTokens.filter(token => token.type !== "EOF" && token.type !== "EndOfInput").length;
 
   return (
     <main className="app-shell">
@@ -132,6 +152,22 @@ export default function App() {
           <span><b>03</b> Dependency resolution</span><span><b>04</b> Evaluation</span>
         </div>
       </section>
+
+      <nav className="stage-tabs" aria-label="Compiler dashboard tabs">
+        {TABS.map(tab => (
+          <button
+            type="button"
+            key={tab.id}
+            className={"stage-tab " + (activeTab === tab.id ? "active" : "")}
+            onClick={() => setActiveTab(tab.id)}
+            aria-current={activeTab === tab.id ? "page" : undefined}
+          >
+            <span className="stage-tab-number">{tab.number}</span>
+            <span className="stage-tab-copy"><strong>{tab.title}</strong><small>{tab.caption}</small></span>
+            {activeTab === tab.id && <span className="stage-tab-active">ACTIVE</span>}
+          </button>
+        ))}
+      </nav>
 
       <section className="workspace">
         <div className="workbar">
@@ -191,23 +227,154 @@ export default function App() {
         </div>
       </section>
 
+      {activeTab !== "spreadsheet" && (
+        <section className="diagnostics-panel" aria-live="polite">
+          <header className="diagnostics-header">
+            <div>
+              <div className="panel-eyebrow">COMPILER WORKBENCH / {activeTabInfo.number}</div>
+              <h2>{activeTabInfo.title}</h2>
+              <p>{activeTabInfo.caption} for the currently selected formula cell.</p>
+            </div>
+            <label className="cell-picker">
+              <span>INSPECT CELL</span>
+              <select value={selected} onChange={event => setSelected(event.target.value)}>
+                {(Object.keys(drafts).length ? Object.keys(drafts).sort() : [selected]).map(cell => (
+                  <option value={cell} key={cell}>{cell}</option>
+                ))}
+              </select>
+            </label>
+          </header>
+
+          {activeTab === "lexical" && (
+            <div className="diagnostic-body">
+              <div className="diagnostic-metrics">
+                <div><span>Source formula</span><strong className="metric-formula">{drafts[selected] || "—"}</strong></div>
+                <div><span>Tokens emitted</span><strong>{tokenCount}</strong></div>
+                <div><span>Lexer status</span><strong className={result.errors[selected] && !result.tokens?.[selected] ? "metric-error" : "metric-good"}>{result.errors[selected] && !result.tokens?.[selected] ? "Error" : selectedTokens.length ? "Complete" : "Waiting"}</strong></div>
+              </div>
+              {result.errors[selected] && !result.tokens?.[selected] ? (
+                <div className="diagnostic-alert"><strong>Lexical / syntax diagnostic</strong><p>{result.errors[selected]}</p><small>Check the formula prefix, function name and characters, then edit the cell in the formula bar.</small></div>
+              ) : selectedTokens.length ? (
+                <div className="data-table-wrap">
+                  <table className="diagnostic-table">
+                    <thead><tr><th>#</th><th>Token type</th><th>Lexeme</th><th>Column</th><th>Status</th></tr></thead>
+                    <tbody>{selectedTokens.map((token, index) => (
+                      <tr key={selected + "-" + index}>
+                        <td className="mono muted-cell">{String(index + 1).padStart(2, "0")}</td>
+                        <td><span className="token-badge">{token.type}</span></td>
+                        <td className="mono token-lexeme">{token.text || "∅"}</td>
+                        <td className="mono muted-cell">{token.column}</td>
+                        <td><span className="status-dot status-dot-good" /> emitted</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              ) : <div className="empty-diagnostic"><span>∅</span><strong>No formula to tokenize</strong><p>Select a cell with a formula beginning with <code>=</code>, or enter one in the formula bar.</p></div>}
+            </div>
+          )}
+
+          {activeTab === "ast" && (
+            <div className="diagnostic-body">
+              <div className="diagnostic-section-heading"><div><span className="section-marker">AST</span><strong>Abstract syntax tree</strong></div><span>{selectedAst ? "PARSE SUCCESS" : "NO TREE"}</span></div>
+              {selectedAst ? (
+                <div className="ast-workspace">
+                  <div className="ast-source"><span>INPUT FORMULA</span><code>{drafts[selected] || "—"}</code></div>
+                  <pre className="ast-tree">{selectedAst}</pre>
+                  <div className="ast-footnote"><span className="status-dot status-dot-good" /> Recursive-descent parser produced a syntax tree for {selected}.</div>
+                </div>
+              ) : (
+                <div className="diagnostic-alert"><strong>AST not available</strong><p>{result.errors[selected] || "This cell has no formula yet."}</p><small>Correct the formula to generate its abstract syntax tree.</small></div>
+              )}
+            </div>
+          )}
+
+          {activeTab === "dependencies" && (
+            <div className="diagnostic-body">
+              <div className="diagnostic-metrics">
+                <div><span>Formula cells</span><strong>{formulaCells.length}</strong></div>
+                <div><span>Selected dependencies</span><strong>{selectedDependencies.length}</strong></div>
+                <div><span>Cycle / error report</span><strong className={errorCount ? "metric-error" : "metric-good"}>{errorCount ? errorCount + " issue(s)" : "Clear"}</strong></div>
+              </div>
+              {formulaCells.length ? (
+                <div className="dependency-list">
+                  {formulaCells.map(cell => {
+                    const dependencies = result.dependencies?.[cell] ?? [];
+                    return (
+                      <article className={"dependency-row " + (cell === selected ? "dependency-row-selected" : "")} key={cell}>
+                        <button className="dependency-source" onClick={() => setSelected(cell)} title={"Inspect " + cell}>
+                          <span className="dep-kind">FORMULA</span><strong>{cell}</strong><code>{drafts[cell]}</code>
+                          {result.errors[cell] && <span className="dep-error">ERROR</span>}
+                          {!result.errors[cell] && result.values[cell] !== undefined && <span className="dep-value">{displayNumber(result.values[cell])}</span>}
+                        </button>
+                        <div className="dependency-arrow"><span>depends on</span><b>→</b></div>
+                        <div className="dependency-targets">
+                          {dependencies.length ? dependencies.map(dep => {
+                            const isFormula = Boolean(formulasAndValues.formulas[dep]);
+                            const hasValue = formulasAndValues.values[dep] !== undefined || result.values[dep] !== undefined;
+                            return <button key={cell + "-" + dep} type="button"
+                              className={"dependency-chip " + (isFormula ? "dep-formula" : hasValue ? "dep-input" : "dep-blank")}
+                              onClick={() => { setSelected(dep); }}
+                              title={isFormula ? "Formula dependency" : hasValue ? "Input value" : "Blank cell in referenced range"}>
+                              {dep}<small>{isFormula ? "ƒx" : hasValue ? "IN" : "BLANK"}</small>
+                            </button>;
+                          }) : <span className="no-dependencies">No cell dependencies</span>}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : <div className="empty-diagnostic"><span>↗</span><strong>No dependency graph yet</strong><p>Add a formula such as <code>=A1+B1</code> to see its references here.</p></div>}
+              <p className="diagnostic-note">Range references are expanded into individual cell addresses. Blank cells appear as BLANK, and formula cells are marked ƒx.</p>
+            </div>
+          )}
+
+          {activeTab === "evaluation" && (
+            <div className="diagnostic-body">
+              <div className="diagnostic-metrics">
+                <div><span>Evaluation order</span><strong>{result.evaluationOrder.length}</strong></div>
+                <div><span>Calculated formulas</span><strong>{Object.keys(result.values).length}</strong></div>
+                <div><span>Errors</span><strong className={errorCount ? "metric-error" : "metric-good"}>{errorCount}</strong></div>
+              </div>
+              {result.evaluationOrder.length ? (
+                <div className="data-table-wrap">
+                  <table className="diagnostic-table">
+                    <thead><tr><th>Order</th><th>Cell</th><th>Formula</th><th>Computed value</th><th>Result</th></tr></thead>
+                    <tbody>{result.evaluationOrder.map((cell, index) => (
+                      <tr key={cell} className={cell === selected ? "evaluation-selected" : ""}>
+                        <td className="mono muted-cell">{String(index + 1).padStart(2, "0")}</td>
+                        <td><button className="cell-link" onClick={() => setSelected(cell)}>{cell}</button></td>
+                        <td className="mono formula-text">{drafts[cell] || "—"}</td>
+                        <td className="mono">{result.values[cell] === undefined ? "—" : displayNumber(result.values[cell])}</td>
+                        <td>{result.errors[cell] ? <span className="result-error">ERROR</span> : result.values[cell] !== undefined ? <span className="result-success">SUCCESS</span> : <span className="muted-cell">NO VALUE</span>}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              ) : <div className="empty-diagnostic"><span>∑</span><strong>No evaluation results yet</strong><p>Enter formulas into the spreadsheet. Results and errors will appear here.</p></div>}
+              {errorCount > 0 && <div className="diagnostic-alert"><strong>Cell diagnostics</strong>{Object.entries(result.errors).map(([cell, message]) => <p key={cell}><code>{cell}</code> — {message}</p>)}</div>}
+            </div>
+          )}
+        </section>
+      )}
+
       <section className="bottom-grid">
         <article className="info-panel">
           <div className="panel-eyebrow">COMPILER PIPELINE</div>
           <h2>Under the hood</h2>
           <div className="pipeline-list">
-            <div><span className="step-num">01</span><span><strong>Parse</strong><small>Formula text → AST</small></span><span className="step-check">✓</span></div>
-            <div><span className="step-num">02</span><span><strong>Analyze</strong><small>Symbol table + cycle detection</small></span><span className="step-check">✓</span></div>
-            <div><span className="step-num">03</span><span><strong>Order</strong><small>Dependency-aware evaluation</small></span><span className="step-check">✓</span></div>
+            <button type="button" onClick={() => setActiveTab("lexical")}><span className="step-num">01</span><span><strong>Lex</strong><small>Formula text → token stream</small></span><span className="step-check">↗</span></button>
+            <button type="button" onClick={() => setActiveTab("ast")}><span className="step-num">02</span><span><strong>Parse</strong><small>Token stream → AST</small></span><span className="step-check">↗</span></button>
+            <button type="button" onClick={() => setActiveTab("dependencies")}><span className="step-num">03</span><span><strong>Analyze</strong><small>Dependencies + cycle checks</small></span><span className="step-check">↗</span></button>
+            <button type="button" onClick={() => setActiveTab("evaluation")}><span className="step-num">04</span><span><strong>Evaluate</strong><small>Order → cell values</small></span><span className="step-check">↗</span></button>
           </div>
         </article>
         <article className="info-panel examples-panel">
           <div className="panel-eyebrow">QUICK START</div>
           <h2>Try a formula</h2>
           <p>Select any cell, then type a value or formula into the formula bar.</p>
-          <div className="example-line"><code>=SUM(A1:B4)</code><span>Sum a cell range</span></div>
-          <div className="example-line"><code>=AVG(C1:C4)</code><span>Calculate an average</span></div>
-          <div className="example-line"><code>=A1+B1*2</code><span>Arithmetic precedence</span></div>
+          <button type="button" className="example-line" onClick={() => { setSelected("D1"); setActiveTab("lexical"); }}><code>=SUM(A1:B4)</code><span>Inspect its tokens →</span></button>
+          <button type="button" className="example-line" onClick={() => { setSelected("C1"); setActiveTab("ast"); }}><code>=A1+B1</code><span>Inspect its AST →</span></button>
+          <button type="button" className="example-line" onClick={() => setActiveTab("evaluation")}><code>Evaluation order</code><span>Open runtime results →</span></button>
           <div className="help-note">{status === "offline" ? "Start the C++ API with make server to enable live calculations." : "Results recalculate automatically after each edit."}</div>
         </article>
       </section>
