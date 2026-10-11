@@ -24,7 +24,7 @@ int main() {
         require(near(forward.values.at("B1"), 10), "B1 should equal 10");
         require(near(forward.values.at("C1"), 15), "C1 should equal 15");
 
-        // Aggregates include empty cells inside a selected rectangular range.
+        // Aggregates tolerate empty cells inside a selected rectangular range.
         auto ranges = evaluator.evaluate({
             {"A1", "=SUM(B1:B3)"}, {"A2", "=COUNT(B1:B3)"}
         });
