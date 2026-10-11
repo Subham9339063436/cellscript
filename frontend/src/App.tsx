@@ -7,7 +7,8 @@ type ApiResult = {
 };
 type Status = "connecting" | "online" | "offline";
 
-const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8080").replace(/\/$/, "");
+const API_BASE = (import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "" : "http://localhost:8080")).replace(/\/$/, "");
+const API_PREFIX = import.meta.env.PROD && !import.meta.env.VITE_API_URL ? "/api" : "";
 const COLS = Array.from({ length: 10 }, (_, i) => String.fromCharCode(65 + i));
 const ROWS = Array.from({ length: 15 }, (_, i) => i + 1);
 const INITIAL: Record<string, string> = {
@@ -48,7 +49,7 @@ export default function App() {
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
-        const response = await fetch(API_URL + "/evaluate", {
+        const response = await fetch(API_BASE + API_PREFIX + "/evaluate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(formulasAndValues),
@@ -74,7 +75,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(API_URL + "/health")
+    fetch(API_BASE + API_PREFIX + "/health")
       .then(r => { if (!r.ok) throw new Error("offline"); return r.json(); })
       .then(() => { if (!cancelled) setStatus("online"); })
       .catch(() => { if (!cancelled) setStatus("offline"); });
