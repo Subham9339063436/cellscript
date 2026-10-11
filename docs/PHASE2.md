@@ -30,7 +30,7 @@ The native API server listens on port 8080 by default. It serves `GET /health` a
 }
 ```
 
-The response includes `values`, `errors`, and `evaluationOrder`. The frontend sends the full workbook after an edit and renders returned values and errors. The server uses a small POSIX socket implementation and a purpose-built parser for the expected JSON request shape. It is intended for local development and trusted networks, not direct public-internet exposure.
+The response includes `values`, `errors`, and `evaluationOrder`. The frontend sends the full workbook after an edit and renders returned values and errors. The server uses a small POSIX socket implementation and a purpose-built parser for the expected JSON request shape. It binds to loopback by default for local development and is not exposed to other machines on the network.
 
 ## 7. Frontend
 The React/Vite interface shows a 10-column by 15-row grid, a formula bar, selected-cell highlighting, error indicators, sample values/formulas, and automatic recalculation through the API. Numeric entries are sent as input values; formula strings beginning with `=` are sent through the compiler.
