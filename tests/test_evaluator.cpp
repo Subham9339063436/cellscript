@@ -57,6 +57,10 @@ int main() {
         auto zeroDivision = evaluator.evaluate({{"A1", "=4/0"}});
         require(zeroDivision.errors.count("A1"), "division by zero must be reported");
 
+        auto conflict = evaluator.evaluate({{"A1", "=5"}, {"B1", "=A1+1"}}, {{"A1", 7}});
+        require(conflict.errors.count("A1") && conflict.errors.count("B1"),
+                "conflicting formula/input cells must report errors to dependants");
+
         auto inputs = evaluator.evaluate({{"B1", "=A1*3"}}, {{"A1", 7}});
         require(inputs.errors.empty() && near(inputs.values.at("B1"), 21),
                 "provided numeric inputs should resolve cell references");
