@@ -219,7 +219,45 @@ std::string resultJson(const EvaluationResult& result) {
         first = false;
         out << '"' << jsonEscape(item.first) << "\":\"" << jsonEscape(item.second) << '"';
     }
+    out << "},\"tokens\":{";
+    first = true;
+    for (const auto& item : result.tokens) {
+        if (!first) out << ',';
+        first = false;
+        out << '"' << jsonEscape(item.first) << "\":[";
+        bool firstToken = true;
+        for (const auto& token : item.second) {
+            if (!firstToken) out << ',';
+            firstToken = false;
+            out << "{\"type\":\"" << jsonEscape(token.type)
+                << "\",\"text\":\"" << jsonEscape(token.text)
+                << "\",\"column\":" << token.column << '}';
+        }
+        out << ']';
+    }
+    out << "},\"asts\":{";
+    first = true;
+    for (const auto& item : result.asts) {
+        if (!first) out << ',';
+        first = false;
+        out << '"' << jsonEscape(item.first) << "\":\"" << jsonEscape(item.second) << '"';
+    }
+    out << "},\"dependencies\":{";
+    first = true;
+    for (const auto& item : result.dependencies) {
+        if (!first) out << ',';
+        first = false;
+        out << '"' << jsonEscape(item.first) << "\":[";
+        bool firstDependency = true;
+        for (const auto& dep : item.second) {
+            if (!firstDependency) out << ',';
+            firstDependency = false;
+            out << '"' << jsonEscape(dep) << '"';
+        }
+        out << ']';
+    }
     out << "},\"evaluationOrder\":[";
+
     first = true;
     for (const auto& cell : result.evaluationOrder) {
         if (!first) out << ',';
