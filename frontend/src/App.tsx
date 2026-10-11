@@ -129,7 +129,7 @@ export default function App() {
   const selectedAst = result.asts?.[selected];
   const activeTabInfo = TABS.find(tab => tab.id === activeTab) ?? TABS[0];
   const validFormulaCount = Object.keys(result.asts ?? {}).length;
-  const tokenCount = selectedTokens.filter(token => token.type !== "EOF" && token.type !== "EndOfInput").length;
+  const tokenCount = selectedTokens.filter(token => token.type !== "EOF" && token.type !== "EndOfInput" && token.type.toLowerCase() !== "eof").length;
 
   return (
     <main className="app-shell">
