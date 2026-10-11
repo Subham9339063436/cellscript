@@ -82,12 +82,14 @@ std::vector<double> SpreadsheetEvaluator::expandRange(const std::string& start,c
     std::vector<double> out;
     for(int r=r0;r<=r1;++r) for(int c=c0;c<=c1;++c) {
       const std::string cell=cellName(r,c);
+      // Spreadsheet aggregate functions ignore blank cells. Explicit numeric zeroes
+      // are still included because their cell exists in the symbol table/input map.
       if(cells_.count(cell)||inputs_.count(cell)) out.push_back(getCellValue(cell,cell));
-      else out.push_back(0.0); // blank cell in a range
     }
     return out;
 }
 double SpreadsheetEvaluator::getCellValue(const std::string& raw,const std::string& owner) {
+    (void)owner;
     const std::string cell=normalizeCell(raw);
     auto input=inputs_.find(cell); if(input!=inputs_.end()) return input->second;
     auto it=cells_.find(cell);
@@ -99,8 +101,8 @@ double SpreadsheetEvaluator::getCellValue(const std::string& raw,const std::stri
       errors_[cell]=e.what();
       throw std::runtime_error("Cell "+cell+": "+e.what());
     }
-    (void)owner;
 }
+
 double SpreadsheetEvaluator::evaluateNode(const ASTPtr& n,const std::string& owner) {
     if(!n) throw std::runtime_error("Empty expression");
     switch(n->type) {
