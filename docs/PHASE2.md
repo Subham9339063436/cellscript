@@ -33,7 +33,7 @@ The native API server listens on port 8080 by default. It serves `GET /health` a
 The response includes `values`, `errors`, and `evaluationOrder`. The frontend sends the full workbook after an edit and renders returned values and errors. The server uses a small POSIX socket implementation and a purpose-built parser for the expected JSON request shape. It binds to loopback by default for local development and is not exposed to other machines on the network.
 
 ## 7. Frontend
-The React/Vite interface shows a 10-column by 15-row grid, a formula bar, selected-cell highlighting, error indicators, sample values/formulas, and automatic recalculation through the API. Numeric entries are sent as input values; formula strings beginning with `=` are sent through the compiler.
+The React/Vite interface shows a 10-column by 15-row grid, a formula bar, selected-cell highlighting, error indicators, sample values/formulas, and automatic recalculation through the API. Its interactive tabs expose the token stream from lexical analysis, AST text from parsing, extracted per-cell dependencies, and dependency-first evaluation order with calculated values and cell errors. The API returns these diagnostic fields for both the local C++ server and Vercel's TypeScript function. Numeric entries are sent as input values; formula strings beginning with `=` are sent through the compiler.
 
 ## 8. Testing
 Run `make test` for Phase 1 lexer/parser regression tests, C++ evaluator tests and HTTP health/evaluation tests. Coverage includes forward references, aggregate functions, blank range cells, cycles, missing direct references, division by zero, numeric input cells and JSON API evaluation. GitHub Actions also builds the frontend bundle.
