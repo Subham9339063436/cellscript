@@ -2,12 +2,31 @@
 #include "lexer.h"
 #include "parser.h"
 #include <algorithm>
+#include <iomanip>
 #include <cctype>
 #include <cmath>
 #include <sstream>
 #include <stdexcept>
 
 namespace {
+std::string tokenName(TokenType type) {
+    switch (type) {
+        case TokenType::Equals: return "Equals";
+        case TokenType::Number: return "Number";
+        case TokenType::CellRef: return "CellRef";
+        case TokenType::FuncName: return "FuncName";
+        case TokenType::Plus: return "Plus";
+        case TokenType::Minus: return "Minus";
+        case TokenType::Star: return "Star";
+        case TokenType::Slash: return "Slash";
+        case TokenType::LParen: return "LParen";
+        case TokenType::RParen: return "RParen";
+        case TokenType::Colon: return "Colon";
+        case TokenType::Comma: return "Comma";
+        case TokenType::EndOfInput: return "EndOfInput";
+    }
+    return "Unknown";
+}
 struct Address { int row; int col; };
 Address parseAddress(const std::string& s) {
     std::size_t i=0; int col=0;
@@ -144,14 +163,36 @@ EvaluationResult SpreadsheetEvaluator::evaluate(const std::map<std::string,std::
       const std::string name=normalizeCell(p.first);
       CellEntry e; e.formula=p.second;
       if(inputs_.count(name)) { errors_[name]="Cell cannot contain both a constant value and a formula"; cells_[name]=std::move(e); continue; }
-      try { Lexer l(p.second); Parser parser(l.tokenize()); e.ast=parser.parseFormula(); collectDependencies(e.ast,e.dependsOn); }
+      try {
+        Lexer lexer(p.second);
+        const auto tokens = lexer.tokenize();
+        e.tokens.reserve(tokens.size());
+        for (const auto& token : tokens) {
+          e.tokens.push_back(AnalysisToken{
+            tokenName(token.type),
+            token.type == TokenType::EndOfInput ? "EOF" : token.text,
+            token.column
+          });
+        }
+        Parser parser(tokens);
+        e.ast = parser.parseFormula();
+        e.astText = astToString(e.ast);
+        collectDependencies(e.ast, e.dependsOn);
+      }
       catch(const std::exception& ex) { e.error=ex.what(); errors_[name]=ex.what(); }
       cells_[name]=std::move(e);
     }
     for(const auto& p:cells_) if(p.second.ast) {
       try { visit(p.first); } catch(const std::exception& e) { errors_[p.first]=e.what(); }
     }
-    EvaluationResult result; result.evaluationOrder=order_;
+    EvaluationResult result;
+    result.evaluationOrder = order_;
+    for (const auto& item : cells_) {
+      if (!item.second.tokens.empty()) result.tokens[item.first] = item.second.tokens;
+      if (item.second.ast) result.asts[item.first] = item.second.astText;
+      result.dependencies[item.first] = std::vector<std::string>(
+        item.second.dependsOn.begin(), item.second.dependsOn.end());
+    }
     for(const auto& name:order_) {
       if(errors_.count(name)) continue;
       auto it=cells_.find(name); if(it==cells_.end()||!it->second.ast) continue;
