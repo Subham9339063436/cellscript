@@ -378,9 +378,36 @@ export default function handler(request: VercelRequest, response: VercelResponse
   response.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (request.method === "OPTIONS") return response.status(204).end();
+
+  // Safe browser-openable smoke test: GET /api/evaluate?diagnostic=1
+  if (request.method === "GET" && request.query?.diagnostic === "1") {
+    try {
+      const sample = evaluateWorkbook({
+        formulas: { A3: "=10+20", B1: "=SUM(A3:A3)" },
+        values: {}
+      });
+      const passed = sample.values.A3 === 30 && sample.values.B1 === 30 &&
+        Boolean(sample.asts.A3) && Boolean(sample.tokens.A3?.length);
+      return response.status(passed ? 200 : 500).json({
+        status: passed ? "ok" : "failed",
+        service: "CellScript Evaluation API",
+        checks: {
+          arithmetic: { actual: sample.values.A3, expected: 30 },
+          rangeFunction: { actual: sample.values.B1, expected: 30 },
+          astGenerated: Boolean(sample.asts.A3),
+          tokensGenerated: Boolean(sample.tokens.A3?.length)
+        }
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error("CellScript evaluation diagnostic failed:", error);
+      return response.status(500).json({ status: "failed", detail });
+    }
+  }
+
   if (request.method !== "POST") {
-    response.setHeader("Allow", "POST, OPTIONS");
-    return response.status(405).json({ error: "Use POST /api/evaluate" });
+    response.setHeader("Allow", "POST, GET, OPTIONS");
+    return response.status(405).json({ error: "Use POST /api/evaluate or GET /api/evaluate?diagnostic=1" });
   }
 
   const contentLength = Number(request.headers["content-length"] || "0");
