@@ -66,7 +66,22 @@ function createSample(): Record<string, string> {
   return { ...next, ...SUMMARY_FORMULAS };
 }
 function createBlankWorkbook(): Record<string, string> {
-  return { ...HEADERS, ...SUMMARY_FORMULAS };
+  return { ...HEADERS };
+}
+function restoreWorkbook(): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem("cellscript-workbook-v1");
+    if (!raw) return createSample();
+    const saved: unknown = JSON.parse(raw);
+    if (saved && typeof saved === "object" && !Array.isArray(saved)) {
+      const validEntries = Object.entries(saved as Record<string, unknown>)
+        .filter((entry): entry is [string, string] => /^[A-F](?:[1-9]|1[0-4])$/.test(entry[0]) && typeof entry[1] === "string");
+      if (validEntries.length) return Object.fromEntries(validEntries);
+    }
+  } catch {
+    // Private browsing, disabled storage, or corrupted old contents: use the demo workbook.
+  }
+  return createSample();
 }
 function initialResult(): ApiResult {
   return { values: {}, errors: {}, evaluationOrder: [], tokens: {}, asts: {}, dependencies: {} };
@@ -79,7 +94,7 @@ function isColumn(cell: string, col: string): boolean {
 }
 
 export default function App() {
-  const [drafts, setDrafts] = useState<Record<string, string>>(createSample);
+  const [drafts, setDrafts] = useState<Record<string, string>>(restoreWorkbook);
   const [selected, setSelected] = useState("F11");
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
@@ -107,6 +122,14 @@ export default function App() {
       else if (text !== "" && Number.isFinite(Number(text))) values[cell] = Number(text);
     }
     return { formulas, values };
+  }, [drafts]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("cellscript-workbook-v1", JSON.stringify(drafts));
+    } catch {
+      // The workbook still works for the current session if browser storage is unavailable.
+    }
   }, [drafts]);
 
   useEffect(() => {
@@ -450,7 +473,7 @@ export default function App() {
     <main className="excel-app">
       <header className="app-topbar">
         <a className="app-brand" href="#" aria-label="CellScript home"><span className="brand-grid"><i /><i /><i /><i /></span><span>CellScript</span></a>
-        <div className="topbar-file"><span className="file-icon">▤</span><span>{workbookName}</span><button type="button" title="Rename workbook" onClick={() => { const name = window.prompt("Workbook name", workbookName); if (name?.trim()) setWorkbookName(name.trim()); }}>⌄</button><span className="saved-label">Saved locally in this session</span></div>
+        <div className="topbar-file"><span className="file-icon">▤</span><span>{workbookName}</span><button type="button" title="Rename workbook" onClick={() => { const name = window.prompt("Workbook name", workbookName); if (name?.trim()) setWorkbookName(name.trim()); }}>⌄</button><span className="saved-label">Auto-saved in this browser</span></div>
         <div className="topbar-end"><span className={"engine-status " + status}><i />{status === "online" ? "Engine ready" : status === "connecting" ? "Connecting" : "Engine offline"}</span><button type="button" className="topbar-share" onClick={exportCsv}>Export ↓</button></div>
       </header>
 
