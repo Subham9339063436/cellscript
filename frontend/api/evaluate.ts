@@ -215,12 +215,12 @@ function collectDependencies(node: Node, out: Set<string>): void {
 function astToText(node: Node, depth = 0): string {
   const pad = "  ".repeat(depth);
   switch (node.kind) {
-    case "number": return pad + "Number(" + node.value + ")\\n";
-    case "cell": return pad + "CellRef(" + node.cell + ")\\n";
-    case "range": return pad + "Range(" + node.start + ":" + node.end + ")\\n";
-    case "binary": return pad + "BinaryOp(" + node.op + ")\\n" +
+    case "number": return pad + "Number(" + node.value + ")\n";
+    case "cell": return pad + "CellRef(" + node.cell + ")\n";
+    case "range": return pad + "Range(" + node.start + ":" + node.end + ")\n";
+    case "binary": return pad + "BinaryOp(" + node.op + ")\n" +
       astToText(node.left, depth + 1) + astToText(node.right, depth + 1);
-    case "call": return pad + "FuncCall(" + node.name + ")\\n" +
+    case "call": return pad + "FuncCall(" + node.name + ")\n" +
       node.args.map(arg => astToText(arg, depth + 1)).join("");
   }
 }
