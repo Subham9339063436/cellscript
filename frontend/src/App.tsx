@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type AnalysisToken = { type: string; text: string; column: number };
 type ApiResult = {
@@ -9,45 +9,96 @@ type ApiResult = {
   asts: Record<string, string>;
   dependencies: Record<string, string[]>;
 };
-type DashboardTab = "spreadsheet" | "lexical" | "ast" | "dependencies" | "evaluation";
-type TabDefinition = { id: DashboardTab; number: string; title: string; caption: string };
-const TABS: TabDefinition[] = [
-  { id: "spreadsheet", number: "01", title: "Spreadsheet", caption: "Edit cells" },
-  { id: "lexical", number: "02", title: "Lexical analysis", caption: "Token stream" },
-  { id: "ast", number: "03", title: "AST parsing", caption: "Syntax tree" },
-  { id: "dependencies", number: "04", title: "Dependencies", caption: "Cell graph" },
-  { id: "evaluation", number: "05", title: "Evaluation", caption: "Runtime results" }
-];
 type Status = "connecting" | "online" | "offline";
+type RibbonTab = "file" | "home" | "insert" | "formulas" | "data" | "view" | "compiler";
+type CompilerStage = "lexical" | "ast" | "dependencies" | "evaluation";
 
+const RIBBON_TABS: { id: RibbonTab; label: string }[] = [
+  { id: "file", label: "File" },
+  { id: "home", label: "Home" },
+  { id: "insert", label: "Insert" },
+  { id: "formulas", label: "Formulas" },
+  { id: "data", label: "Data" },
+  { id: "view", label: "View" },
+  { id: "compiler", label: "Compiler" }
+];
+const COMPILER_STAGES: { id: CompilerStage; label: string; caption: string }[] = [
+  { id: "lexical", label: "Lexical analysis", caption: "Token stream" },
+  { id: "ast", label: "AST parsing", caption: "Syntax tree" },
+  { id: "dependencies", label: "Dependency resolution", caption: "Cell references" },
+  { id: "evaluation", label: "Evaluation", caption: "Computed results" }
+];
 const API_BASE = (import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "" : "http://localhost:8080")).replace(/\/$/, "");
 const API_PREFIX = import.meta.env.PROD && !import.meta.env.VITE_API_URL ? "/api" : "";
-const COLS = Array.from({ length: 10 }, (_, i) => String.fromCharCode(65 + i));
-const ROWS = Array.from({ length: 15 }, (_, i) => i + 1);
-const INITIAL: Record<string, string> = {
-  A1: "1200", A2: "850", A3: "430", A4: "225",
-  B1: "540", B2: "300", B3: "175", B4: "95",
-  C1: "=A1+B1", C2: "=A2+B2", C3: "=A3+B3", C4: "=A4+B4",
-  D1: "=SUM(A1:B4)", D2: "=AVG(C1:C4)", D3: "=MAX(A1:B4)", D4: "=COUNT(A1:B4)",
-  E1: "=D1*0.18", E2: "=D1+E1"
+const COLUMNS = ["A", "B", "C", "D", "E", "F"] as const;
+const FIRST_DATA_ROW = 2;
+const LAST_DATA_ROW = 10;
+const DISPLAY_ROWS = Array.from({ length: 14 }, (_, i) => i + 1);
+const HEADERS: Record<string, string> = {
+  A1: "Date", B1: "Open", C1: "Close", D1: "High (+)", E1: "Low (-)", F1: "Profit"
 };
-
-function displayNumber(value: number) {
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 8 }).format(value);
+const STOCK_VALUES: Record<string, string> = {
+  A2: "8/1/2022", B2: "2625.75", C2: "2640.75", D2: "2642.75", E2: "2620.65",
+  A3: "8/2/2022", B3: "2640.75", C3: "2638.75", D3: "2640.75", E3: "2638.75",
+  A4: "8/3/2022", B4: "2638.75", C4: "2697.65", D4: "2698.25", E4: "2635.65",
+  A5: "8/4/2022", B5: "2697.65", C5: "2700.25", D5: "2700.25", E5: "2585.10",
+  A6: "8/5/2022", B6: "2700.25", C6: "2730.25", D6: "2732.25", E6: "2700.00",
+  A7: "8/6/2022", B7: "2730.25", C7: "2730.25", D7: "2730.25", E7: "2725.67",
+  A8: "8/7/2022", B8: "2730.25", C8: "2778.75", D8: "2780.25", E8: "2730.20",
+  A9: "8/8/2022", B9: "2778.75", C9: "2800.67", D9: "2802.27", E9: "2770.78",
+  A10: "8/9/2022", B10: "2800.67", C10: "2840.80", D10: "2848.78", E10: "2797.78"
+};
+const SUMMARY_LABELS: Record<number, string> = {
+  11: "Average profit:",
+  12: "Maximum stock value:",
+  13: "Minimum stock value:",
+  14: "Trading days:"
+};
+const SUMMARY_FORMULAS: Record<string, string> = {
+  F11: "=AVERAGE(F2:F10)",
+  F12: "=MAX(D2:D10)",
+  F13: "=MIN(E2:E10)",
+  F14: "=COUNT(F2:F10)"
+};
+function createSample(): Record<string, string> {
+  const next: Record<string, string> = { ...HEADERS, ...STOCK_VALUES };
+  for (let row = FIRST_DATA_ROW; row <= LAST_DATA_ROW; row += 1) next["F" + row] = "=C" + row + "-B" + row;
+  return { ...next, ...SUMMARY_FORMULAS };
+}
+function createBlankWorkbook(): Record<string, string> {
+  return { ...HEADERS, ...SUMMARY_FORMULAS };
 }
 function initialResult(): ApiResult {
   return { values: {}, errors: {}, evaluationOrder: [], tokens: {}, asts: {}, dependencies: {} };
 }
+function displayNumber(value: number): string {
+  return new Intl.NumberFormat("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value);
+}
+function isColumn(cell: string, col: string): boolean {
+  return cell.startsWith(col);
+}
 
 export default function App() {
-  const [drafts, setDrafts] = useState<Record<string, string>>(INITIAL);
-  const [selected, setSelected] = useState("D1");
-  const [activeTab, setActiveTab] = useState<DashboardTab>("spreadsheet");
-  const [result, setResult] = useState<ApiResult>(initialResult());
+  const [drafts, setDrafts] = useState<Record<string, string>>(createSample);
+  const [selected, setSelected] = useState("F11");
+  const [editingCell, setEditingCell] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState("");
+  const [ribbonTab, setRibbonTab] = useState<RibbonTab>("home");
+  const [compilerStage, setCompilerStage] = useState<CompilerStage>("lexical");
+  const [result, setResult] = useState<ApiResult>(initialResult);
   const [status, setStatus] = useState<Status>("connecting");
   const [lastCalculated, setLastCalculated] = useState<Date | null>(null);
+  const [gridlines, setGridlines] = useState(true);
+  const [showFormulas, setShowFormulas] = useState(false);
+  const [showChart, setShowChart] = useState(false);
+  const [boldSelection, setBoldSelection] = useState(false);
+  const [zoom, setZoom] = useState(100);
+  const [workbookName, setWorkbookName] = useState("Stock Details");
+  const [recalcCounter, setRecalcCounter] = useState(0);
+  const undoStack = useRef<Record<string, string>[]>([]);
+  const redoStack = useRef<Record<string, string>[]>([]);
 
-  const formulasAndValues = useMemo(() => {
+  const workbook = useMemo(() => {
     const formulas: Record<string, string> = {};
     const values: Record<string, number> = {};
     for (const [cell, raw] of Object.entries(drafts)) {
@@ -66,7 +117,7 @@ export default function App() {
         const response = await fetch(API_BASE + API_PREFIX + "/evaluate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formulasAndValues),
+          body: JSON.stringify(workbook),
           signal: controller.signal
         });
         if (!response.ok) throw new Error("API returned HTTP " + response.status);
@@ -79,309 +130,389 @@ export default function App() {
       } catch {
         if (!cancelled) setStatus("offline");
       }
-    }, 180);
+    }, 120);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [formulasAndValues]);
+  }, [workbook, recalcCounter]);
 
   useEffect(() => {
     let cancelled = false;
     fetch(API_BASE + API_PREFIX + "/health")
-      .then(r => { if (!r.ok) throw new Error("offline"); return r.json(); })
+      .then(response => { if (!response.ok) throw new Error("API unavailable"); return response.json(); })
       .then(() => { if (!cancelled) setStatus("online"); })
       .catch(() => { if (!cancelled) setStatus("offline"); });
     return () => { cancelled = true; };
   }, []);
 
-  function updateSelected(value: string) {
-    setDrafts(previous => ({ ...previous, [selected]: value }));
+  function commitDrafts(next: Record<string, string>) {
+    undoStack.current.push(drafts);
+    if (undoStack.current.length > 100) undoStack.current.shift();
+    redoStack.current = [];
+    setDrafts(next);
   }
-  function clearSheet() {
-    setDrafts({});
-    setResult(initialResult());
+  function updateCell(cell: string, value: string) {
+    commitDrafts({ ...drafts, [cell]: value });
+  }
+  function updateSelected(value: string) {
+    updateCell(selected, value);
   }
   function loadSample() {
-    setDrafts(INITIAL);
-    setSelected("D1");
+    commitDrafts(createSample());
+    setSelected("F11");
+    setWorkbookName("Stock Details");
+    setShowChart(false);
   }
-  function cellValue(cell: string): { label: string; isError: boolean; tooltip?: string } {
-    if (result.errors[cell]) return { label: "#ERROR", isError: true, tooltip: result.errors[cell] };
-    if (formulasAndValues.formulas[cell]) {
-      return result.values[cell] === undefined
-        ? { label: "…", isError: false }
-        : { label: displayNumber(result.values[cell]), isError: false };
+  function newWorkbook() {
+    if (!window.confirm("Create a new workbook? Unsaved cell entries in this worksheet will be replaced.")) return;
+    commitDrafts(createBlankWorkbook());
+    setWorkbookName("Untitled workbook");
+    setSelected("A2");
+    setShowChart(false);
+  }
+  function clearContents() {
+    const next = { ...drafts };
+    for (let row = FIRST_DATA_ROW; row <= LAST_DATA_ROW; row += 1) {
+      for (const col of COLUMNS) if (col !== "F") delete next[col + row];
+      next["F" + row] = "=C" + row + "-B" + row;
     }
-    if (formulasAndValues.values[cell] !== undefined) {
-      return { label: displayNumber(formulasAndValues.values[cell]), isError: false };
+    commitDrafts(next);
+  }
+  function undo() {
+    const previous = undoStack.current.pop();
+    if (!previous) return;
+    redoStack.current.push(drafts);
+    setDrafts(previous);
+  }
+  function redo() {
+    const next = redoStack.current.pop();
+    if (!next) return;
+    undoStack.current.push(drafts);
+    setDrafts(next);
+  }
+  function exportCsv() {
+    const rows: string[][] = [];
+    for (const row of DISPLAY_ROWS) {
+      const line: string[] = [];
+      for (const col of COLUMNS) {
+        const address = col + row;
+        let value = drafts[address] ?? "";
+        if (value.startsWith("=") && result.values[address] !== undefined) value = String(result.values[address]);
+        line.push(value);
+      }
+      rows.push(line);
     }
-    return { label: "", isError: false };
+    const csv = rows.map(row => row.map(value => '"' + value.replaceAll('"', '""') + '"').join(",")).join("\\r\\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = (workbookName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "cellscript") + ".csv";
+    anchor.click();
+    URL.revokeObjectURL(href);
+  }
+  function sortByProfit(direction: "asc" | "desc") {
+    const sourceRows = Array.from({ length: LAST_DATA_ROW - FIRST_DATA_ROW + 1 }, (_, i) => FIRST_DATA_ROW + i);
+    sourceRows.sort((a, b) => {
+      const diff = (result.values["F" + a] ?? 0) - (result.values["F" + b] ?? 0);
+      return direction === "asc" ? diff : -diff;
+    });
+    const next = { ...drafts };
+    const keys = ["A", "B", "C", "D", "E"];
+    sourceRows.forEach((oldRow, index) => {
+      const targetRow = FIRST_DATA_ROW + index;
+      keys.forEach(col => { next[col + targetRow] = drafts[col + oldRow] ?? ""; });
+    });
+    commitDrafts(next);
+    setSelected("F2");
+  }
+  function insertFunction(name: "SUM" | "AVERAGE" | "MAX" | "MIN" | "COUNT") {
+    const col = isColumn(selected, "F") ? "F" : isColumn(selected, "D") ? "D" : "F";
+    const formula = name + "(" + col + FIRST_DATA_ROW + ":" + col + LAST_DATA_ROW + ")";
+    updateSelected("=" + formula);
+    setRibbonTab("home");
+  }
+  function jumpToCompiler(stage: CompilerStage) {
+    setCompilerStage(stage);
+    setRibbonTab("compiler");
+  }
+  function moveSelection(key: string) {
+    const match = /^([A-F])(\\d+)$/.exec(selected);
+    if (!match) return;
+    let col = COLUMNS.indexOf(match[1] as typeof COLUMNS[number]);
+    let row = Number(match[2]);
+    if (key === "ArrowUp") row -= 1;
+    if (key === "ArrowDown" || key === "Enter") row += 1;
+    if (key === "ArrowLeft") col -= 1;
+    if (key === "ArrowRight" || key === "Tab") col += 1;
+    if (key === "Tab" && (window.event as KeyboardEvent | undefined)?.shiftKey) col -= 2;
+    row = Math.min(DISPLAY_ROWS.length, Math.max(1, row));
+    col = Math.min(COLUMNS.length - 1, Math.max(0, col));
+    setSelected(COLUMNS[col] + row);
+  }
+  function cellValue(cell: string): { label: string; isError: boolean; tooltip?: string; source: string } {
+    const source = drafts[cell] ?? "";
+    if (result.errors[cell]) return { label: "#ERROR", isError: true, tooltip: result.errors[cell], source };
+    if (source.trim().startsWith("=")) {
+      if (showFormulas) return { label: source, isError: false, source };
+      return { label: result.values[cell] === undefined ? "…" : displayNumber(result.values[cell]), isError: false, source };
+    }
+    if (workbook.values[cell] !== undefined) return { label: displayNumber(workbook.values[cell]), isError: false, source };
+    return { label: source, isError: false, source };
+  }
+  function renderCell(cell: string) {
+    const info = cellValue(cell);
+    const formula = info.source.trim().startsWith("=");
+    const classes = [
+      cell === selected ? "selected-cell" : "",
+      info.isError ? "error-cell" : "",
+      formula ? "formula-cell" : "",
+      workbook.values[cell] !== undefined ? "input-cell" : "",
+      boldSelection && cell === selected ? "bold-cell" : ""
+    ].filter(Boolean).join(" ");
+    return (
+      <td key={cell} className={classes}>
+        {editingCell === cell ? (
+          <input
+            autoFocus
+            className="cell-edit-input"
+            aria-label={"Edit " + cell}
+            value={editingValue}
+            onChange={event => setEditingValue(event.target.value)}
+            onBlur={event => {
+              if (event.currentTarget.dataset.cancel !== "true") updateCell(cell, editingValue);
+              delete event.currentTarget.dataset.cancel;
+              setEditingCell(null);
+            }}
+            onKeyDown={event => {
+              if (event.key === "Enter") event.currentTarget.blur();
+              if (event.key === "Escape") { event.currentTarget.dataset.cancel = "true"; event.currentTarget.blur(); }
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            title={info.tooltip || (info.source ? info.source : cell)}
+            aria-label={cell + (info.label ? ": " + info.label : "")}
+            onClick={() => setSelected(cell)}
+            onDoubleClick={() => { setSelected(cell); setEditingCell(cell); setEditingValue(drafts[cell] ?? ""); }}
+            onKeyDown={event => {
+              if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Tab"].includes(event.key)) {
+                event.preventDefault();
+                moveSelection(event.key);
+              }
+              if (event.key === "F2") { event.preventDefault(); setEditingCell(cell); setEditingValue(drafts[cell] ?? ""); }
+            }}
+          >
+            {info.label || <span className="empty-cell">·</span>}
+          </button>
+        )}
+      </td>
+    );
   }
 
-  const selectedFormula = drafts[selected] ?? "";
-  const selectedValue = cellValue(selected);
+  const selectedSource = drafts[selected] ?? "";
+  const selectedCellValue = cellValue(selected);
   const errorCount = Object.keys(result.errors).length;
-  const formulaCells = Object.keys(formulasAndValues.formulas).sort();
-  const inspectionCells = Array.from(new Set([...Object.keys(drafts), selected])).sort();
+  const formulaCells = Object.keys(workbook.formulas).sort();
   const selectedTokens = result.tokens?.[selected] ?? [];
   const selectedDependencies = result.dependencies?.[selected] ?? [];
   const selectedAst = result.asts?.[selected];
-  const activeTabInfo = TABS.find(tab => tab.id === activeTab) ?? TABS[0];
-  const validFormulaCount = Object.keys(result.asts ?? {}).length;
-  const tokenCount = selectedTokens.filter(token => token.type !== "EOF" && token.type !== "EndOfInput" && token.type.toLowerCase() !== "eof").length;
+  const tokenCount = selectedTokens.filter(token => !["EOF", "EndOfInput", "eof"].includes(token.type)).length;
+  const positives = Array.from({ length: 9 }, (_, i) => result.values["F" + (i + 2)] ?? 0);
+  const maxProfit = Math.max(1, ...positives.map(value => Math.abs(value)));
+  const averageProfit = result.values.F11;
+  const maxStock = result.values.F12;
+  const minStock = result.values.F13;
+  const tradingDays = result.values.F14;
+
+  function renderCompilerPanel() {
+    return (
+      <section className="compiler-panel">
+        <header className="compiler-panel-head">
+          <div>
+            <div className="sheet-kicker">CELLSCRIPT / COMPILER WORKBENCH</div>
+            <h2>{COMPILER_STAGES.find(stage => stage.id === compilerStage)?.label}</h2>
+            <p>Live analysis for cell <strong>{selected}</strong> · <code>{selectedSource || "(empty cell)"}</code></p>
+          </div>
+          <div className="api-status"><i className={status} />{status === "online" ? "Engine connected" : status === "connecting" ? "Connecting…" : "Engine offline"}</div>
+        </header>
+        <div className="compiler-stage-tabs">
+          {COMPILER_STAGES.map(stage => (
+            <button key={stage.id} type="button" className={compilerStage === stage.id ? "selected" : ""} onClick={() => setCompilerStage(stage.id)}>
+              <strong>{stage.label}</strong><small>{stage.caption}</small>
+            </button>
+          ))}
+        </div>
+        <div className="compiler-panel-body">
+          {compilerStage === "lexical" && (
+            <>
+              <div className="analysis-summary"><span>Token count <strong>{tokenCount}</strong></span><span>Selected cell <strong>{selected}</strong></span><span>Status <strong className={result.errors[selected] ? "error-text" : "success-text"}>{result.errors[selected] ? "Error" : selectedTokens.length ? "Complete" : "No formula"}</strong></span></div>
+              {result.errors[selected] && !selectedTokens.length ? <div className="analysis-error">{result.errors[selected]}</div> : selectedTokens.length ? (
+                <div className="table-overflow"><table className="analysis-table"><thead><tr><th>#</th><th>Token type</th><th>Lexeme</th><th>Source column</th></tr></thead><tbody>
+                  {selectedTokens.map((token, index) => <tr key={selected + index}><td>{String(index + 1).padStart(2, "0")}</td><td><span className="token-type">{token.type}</span></td><td className="analysis-mono">{token.text || "EOF"}</td><td className="analysis-mono">{token.column}</td></tr>)}
+                </tbody></table></div>
+              ) : <div className="analysis-empty">Select a formula cell or enter a formula such as <code>=C2-B2</code>.</div>}
+            </>
+          )}
+          {compilerStage === "ast" && (
+            selectedAst ? <div className="ast-view"><div className="ast-source-line"><span>FORMULA</span><code>{selectedSource}</code></div><pre>{selectedAst}</pre><div className="ast-footer">✓ Recursive-descent parser returned an AST for {selected}.</div></div>
+              : <div className={result.errors[selected] ? "analysis-error" : "analysis-empty"}>{result.errors[selected] || "This cell does not currently contain a valid formula."}</div>
+          )}
+          {compilerStage === "dependencies" && (
+            <>
+              <div className="analysis-summary"><span>Formula cells <strong>{formulaCells.length}</strong></span><span>Selected references <strong>{selectedDependencies.length}</strong></span><span>Cell errors <strong className={errorCount ? "error-text" : "success-text"}>{errorCount}</strong></span></div>
+              {formulaCells.length ? <div className="dependency-table">{formulaCells.map(cell => (
+                <div className={"dependency-line " + (selected === cell ? "active" : "")} key={cell}>
+                  <button type="button" className="dependency-formula" onClick={() => setSelected(cell)}><small>FORMULA CELL</small><strong>{cell}</strong><code>{drafts[cell]}</code></button>
+                  <div className="dependency-connector"><span>depends on</span><b>→</b></div>
+                  <div className="dependency-targets">{(result.dependencies[cell] ?? []).length ? result.dependencies[cell].map(dep => (
+                    <button type="button" key={cell + dep} onClick={() => setSelected(dep)} className={"dependency-chip " + (workbook.formulas[dep] ? "formula" : workbook.values[dep] !== undefined ? "input" : "blank")}>
+                      {dep}<small>{workbook.formulas[dep] ? "ƒx" : workbook.values[dep] !== undefined ? "VALUE" : "BLANK"}</small>
+                    </button>
+                  )) : <span className="no-dependency">No cell references</span>}</div>
+                  {result.errors[cell] && <span className="dependency-error">{result.errors[cell]}</span>}
+                </div>
+              ))}</div> : <div className="analysis-empty">No formulas to analyze yet.</div>}
+            </>
+          )}
+          {compilerStage === "evaluation" && (
+            <>
+              <div className="analysis-summary"><span>Evaluation order <strong>{result.evaluationOrder.length}</strong></span><span>Computed values <strong>{Object.keys(result.values).length}</strong></span><span>Errors <strong className={errorCount ? "error-text" : "success-text"}>{errorCount}</strong></span></div>
+              {result.evaluationOrder.length ? <div className="table-overflow"><table className="analysis-table"><thead><tr><th>#</th><th>Cell</th><th>Formula</th><th>Computed value</th><th>Result</th></tr></thead><tbody>
+                {result.evaluationOrder.map((cell, index) => <tr key={cell} className={cell === selected ? "row-selected" : ""}><td>{String(index + 1).padStart(2, "0")}</td><td><button type="button" className="link-cell" onClick={() => setSelected(cell)}>{cell}</button></td><td className="analysis-mono">{drafts[cell] || "—"}</td><td className="analysis-mono">{result.values[cell] === undefined ? "—" : displayNumber(result.values[cell])}</td><td>{result.errors[cell] ? <span className="error-text">ERROR</span> : result.values[cell] !== undefined ? <span className="success-text">SUCCESS</span> : "NO VALUE"}</td></tr>)}
+              </tbody></table></div> : <div className="analysis-empty">Enter formulas into the worksheet to populate evaluation output.</div>}
+              {errorCount > 0 && <div className="error-list"><strong>Cell diagnostics</strong>{Object.entries(result.errors).map(([cell, message]) => <p key={cell}><code>{cell}</code> — {message}</p>)}</div>}
+            </>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  function renderRibbon() {
+    if (ribbonTab === "file") return (
+      <div className="ribbon-groups">
+        <section className="ribbon-group"><div className="ribbon-actions"><button type="button" className="ribbon-action primary" onClick={newWorkbook}><b>＋</b><span>New workbook</span></button><button type="button" className="ribbon-action" onClick={loadSample}><b>▤</b><span>Open stock sample</span></button></div><small>Workbook</small></section>
+        <section className="ribbon-group"><div className="ribbon-actions"><button type="button" className="ribbon-action" onClick={exportCsv}><b>⇩</b><span>Export CSV</span></button></div><small>Export</small></section>
+        <section className="ribbon-group ribbon-group-note"><strong>{workbookName}</strong><span>{Object.keys(drafts).filter(key => drafts[key] !== "").length} populated cells · {formulaCells.length} formulas</span></section>
+      </div>
+    );
+    if (ribbonTab === "home") return (
+      <div className="ribbon-groups">
+        <section className="ribbon-group"><div className="ribbon-actions"><button type="button" className="ribbon-action" disabled={!undoStack.current.length} onClick={undo}><b>↶</b><span>Undo</span></button><button type="button" className="ribbon-action" disabled={!redoStack.current.length} onClick={redo}><b>↷</b><span>Redo</span></button></div><small>History</small></section>
+        <section className="ribbon-group"><div className="ribbon-actions"><button type="button" className="ribbon-action" onClick={() => setBoldSelection(value => !value)}><b className="bold-glyph">B</b><span>Bold selected</span></button><button type="button" className="ribbon-action" onClick={clearContents}><b>⌫</b><span>Clear data cells</span></button></div><small>Editing</small></section>
+        <section className="ribbon-group ribbon-group-note"><strong>Selected cell: {selected}</strong><span>Click to select · double-click a cell to edit it directly</span></section>
+      </div>
+    );
+    if (ribbonTab === "insert") return (
+      <div className="ribbon-groups">
+        <section className="ribbon-group"><div className="ribbon-actions"><button type="button" className={"ribbon-action " + (showChart ? "active-action" : "")} onClick={() => setShowChart(value => !value)}><b>▥</b><span>{showChart ? "Hide profit chart" : "Insert profit chart"}</span></button></div><small>Chart</small></section>
+        <section className="ribbon-group"><div className="ribbon-actions"><button type="button" className="ribbon-action" onClick={() => { setSelected("F11"); setRibbonTab("formulas"); }}><b>ƒx</b><span>Summary formulas</span></button></div><small>Functions</small></section>
+      </div>
+    );
+    if (ribbonTab === "formulas") return (
+      <div className="ribbon-groups">
+        <section className="ribbon-group wide-ribbon-group"><div className="ribbon-actions function-actions">
+          {(["SUM", "AVERAGE", "MAX", "MIN", "COUNT"] as const).map(name => <button type="button" key={name} className="ribbon-action function-action" onClick={() => insertFunction(name)}><b>ƒx</b><span>{name}</span></button>)}
+        </div><small>Insert function into {selected}</small></section>
+        <section className="ribbon-group"><div className="ribbon-actions"><button type="button" className="ribbon-action" onClick={() => jumpToCompiler("lexical")}><b>≡</b><span>Inspect formula</span></button></div><small>Formula analysis</small></section>
+      </div>
+    );
+    if (ribbonTab === "data") return (
+      <div className="ribbon-groups">
+        <section className="ribbon-group"><div className="ribbon-actions"><button type="button" className="ribbon-action" onClick={() => sortByProfit("asc")}><b>↑↓</b><span>Profit ascending</span></button><button type="button" className="ribbon-action" onClick={() => sortByProfit("desc")}><b>↓↑</b><span>Profit descending</span></button></div><small>Sort rows</small></section>
+        <section className="ribbon-group"><div className="ribbon-actions"><button type="button" className="ribbon-action" onClick={() => setRecalcCounter(value => value + 1)}><b>⟳</b><span>Recalculate workbook</span></button></div><small>Calculation</small></section>
+        <section className="ribbon-group"><div className="ribbon-actions"><button type="button" className="ribbon-action" onClick={() => jumpToCompiler("dependencies")}><b>⌘</b><span>View dependencies</span></button></div><small>Relationships</small></section>
+      </div>
+    );
+    if (ribbonTab === "view") return (
+      <div className="ribbon-groups">
+        <section className="ribbon-group"><div className="ribbon-actions"><button type="button" className={"ribbon-action " + (gridlines ? "active-action" : "")} onClick={() => setGridlines(value => !value)}><b>▦</b><span>{gridlines ? "Hide gridlines" : "Show gridlines"}</span></button><button type="button" className={"ribbon-action " + (showFormulas ? "active-action" : "")} onClick={() => setShowFormulas(value => !value)}><b>ƒx</b><span>{showFormulas ? "Show values" : "Show formulas"}</span></button></div><small>Display</small></section>
+        <section className="ribbon-group"><div className="ribbon-actions zoom-actions"><button type="button" className="ribbon-action" onClick={() => setZoom(value => Math.max(75, value - 10))}><b>−</b><span>Zoom out</span></button><strong>{zoom}%</strong><button type="button" className="ribbon-action" onClick={() => setZoom(value => Math.min(125, value + 10))}><b>＋</b><span>Zoom in</span></button></div><small>Zoom</small></section>
+      </div>
+    );
+    return (
+      <div className="ribbon-groups compiler-ribbon-groups">
+        <section className="ribbon-group wide-ribbon-group"><div className="ribbon-actions compiler-shortcuts">
+          {COMPILER_STAGES.map(stage => <button type="button" key={stage.id} className={"ribbon-action " + (compilerStage === stage.id ? "active-action" : "")} onClick={() => setCompilerStage(stage.id)}><b>{stage.id === "lexical" ? "≡" : stage.id === "ast" ? "⑂" : stage.id === "dependencies" ? "↗" : "Σ"}</b><span>{stage.label}</span></button>)}
+        </div><small>Compiler pipeline</small></section>
+        <section className="ribbon-group ribbon-group-note"><strong>Formula under inspection: {selected}</strong><span>Change the selected cell to refresh each stage.</span></section>
+      </div>
+    );
+  }
 
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <a className="brand" href="#" aria-label="CellScript home">
-          <span className="brand-mark"><span /><span /><span /><span /></span>
-          <span>cellscript<span className="brand-period">.</span></span>
-        </a>
-        <div className="topbar-right">
-          <span className="phase-tag">COMPILER DESIGN · PHASE 2</span>
-          <span className={"connection " + status}><i />{status === "online" ? "Engine connected" : status === "connecting" ? "Connecting…" : "Engine offline"}</span>
-        </div>
+    <main className="excel-app">
+      <header className="app-topbar">
+        <a className="app-brand" href="#" aria-label="CellScript home"><span className="brand-grid"><i /><i /><i /><i /></span><span>CellScript</span></a>
+        <div className="topbar-file"><span className="file-icon">▤</span><span>{workbookName}</span><button type="button" title="Rename workbook" onClick={() => { const name = window.prompt("Workbook name", workbookName); if (name?.trim()) setWorkbookName(name.trim()); }}>⌄</button><span className="saved-label">Saved locally in this session</span></div>
+        <div className="topbar-end"><span className={"engine-status " + status}><i />{status === "online" ? "Engine ready" : status === "connecting" ? "Connecting" : "Engine offline"}</span><button type="button" className="topbar-share" onClick={exportCsv}>Export ↓</button></div>
       </header>
 
-      <section className="hero">
-        <div className="eyebrow"><span /> SPREADSHEET FORMULA COMPILER</div>
-        <h1>Think in cells.<br /><em>Compute with clarity.</em></h1>
-        <p>A live formula workspace powered by a C++ compiler, dependency graph analysis, and a topological evaluation engine.</p>
-        <div className="hero-pills">
-          <span><b>01</b> Lexical analysis</span><span><b>02</b> AST parsing</span>
-          <span><b>03</b> Dependency resolution</span><span><b>04</b> Evaluation</span>
-        </div>
+      <section className="ribbon-shell">
+        <nav className="ribbon-tabs" aria-label="Workbook ribbon">
+          {RIBBON_TABS.map(tab => <button key={tab.id} type="button" className={ribbonTab === tab.id ? "active" : ""} onClick={() => setRibbonTab(tab.id)}>{tab.label}</button>)}
+        </nav>
+        <div className="ribbon-content">{renderRibbon()}</div>
       </section>
 
-      <nav className="stage-tabs" aria-label="Compiler dashboard tabs">
-        {TABS.map(tab => (
-          <button
-            type="button"
-            key={tab.id}
-            className={"stage-tab " + (activeTab === tab.id ? "active" : "")}
-            onClick={() => setActiveTab(tab.id)}
-            aria-current={activeTab === tab.id ? "page" : undefined}
-          >
-            <span className="stage-tab-number">{tab.number}</span>
-            <span className="stage-tab-copy"><strong>{tab.title}</strong><small>{tab.caption}</small></span>
-            {activeTab === tab.id && <span className="stage-tab-active">ACTIVE</span>}
-          </button>
-        ))}
-      </nav>
+      <section className="formula-area">
+        <div className="cell-name-box" title="Selected cell">{selected}</div>
+        <span className="formula-divider" />
+        <span className="fx-symbol">ƒx</span>
+        <input aria-label={"Formula or value for " + selected} value={selectedSource} onChange={event => updateSelected(event.target.value)} onKeyDown={event => { if (event.key === "Enter") moveSelection("Enter"); if (event.key === "Escape") event.currentTarget.blur(); }} placeholder="Type a value or a formula beginning with =" />
+        <div className="formula-value">{selectedCellValue.isError ? "#ERROR" : selectedCellValue.label || " "}</div>
+      </section>
 
-      <section className="workspace">
-        <div className="workbar">
-          <div className="workbar-title"><span className="sheet-icon">▦</span><div><strong>Untitled workbook</strong><small>Single-sheet formula workspace</small></div></div>
-          <div className="workbar-actions">
-            <button className="button button-quiet" onClick={clearSheet}>Clear sheet</button>
-            <button className="button button-primary" onClick={loadSample}>↻ Load sample</button>
-          </div>
-        </div>
-
-        <div className="formula-toolbar">
-          <div className="name-box">{selected}</div>
-          <div className="fx-label">ƒx</div>
-          <input aria-label={"Formula for " + selected} value={selectedFormula}
-            onChange={e => updateSelected(e.target.value)}
-            placeholder="Enter a number or a formula starting with =" />
-          <div className="formula-result">{selectedValue.isError ? "!" : selectedValue.label}</div>
-        </div>
-
+      <section className="sheet-frame" aria-label="Spreadsheet workbook">
         <div className="sheet-scroll">
-          <table className="sheet-grid" aria-label="Spreadsheet cells">
-            <thead><tr><th className="corner" />
-              {COLS.map(col => <th key={col} className={selected.startsWith(col) ? "selected-col" : ""}>{col}</th>)}
-            </tr></thead>
-            <tbody>{ROWS.map(row => <tr key={row}>
-              <th className="row-number">{row}</th>
-              {COLS.map(col => {
-                const cell = col + row;
-                const info = cellValue(cell);
-                const isSelected = cell === selected;
-                const formula = (drafts[cell] ?? "").trim().startsWith("=");
-                return <td key={cell} className={[
-                  isSelected ? "selected-cell" : "",
-                  info.isError ? "error-cell" : "",
-                  formula ? "formula-cell" : "",
-                  drafts[cell] && !formula && formulasAndValues.values[cell] !== undefined ? "input-cell" : ""
-                ].filter(Boolean).join(" ")}>
-                  <button title={info.tooltip || (drafts[cell] ? (formula ? drafts[cell] : "Value: " + drafts[cell]) : cell)}
-                    onClick={() => setSelected(cell)} aria-label={cell + (info.label ? ": " + info.label : "")}>
-                    {info.label || <span className="empty-cell">·</span>}
-                  </button>
-                </td>;
-              })}
-            </tr>)}</tbody>
+          <table className={"excel-grid " + (gridlines ? "with-gridlines" : "without-gridlines")} style={{ zoom: zoom / 100 }} aria-label="Stock details spreadsheet">
+            <colgroup><col className="row-header-col" />{COLUMNS.map(col => <col key={col} className={"column-" + col.toLowerCase()} />)}</colgroup>
+            <thead><tr><th className="select-all-cell">◢</th>{COLUMNS.map(col => <th key={col} className={isColumn(selected, col) ? "selected-column-heading" : ""}>{col}</th>)}</tr></thead>
+            <tbody>
+              {DISPLAY_ROWS.map(row => (
+                <tr key={row} className={row === 1 ? "header-row" : row >= 11 ? "summary-row" : ""}>
+                  <th className={"row-header " + (selected.endsWith(String(row)) ? "selected-row-heading" : "")}>{row}</th>
+                  {row >= 11 ? (
+                    <>
+                      {["A", "B", "C"].map(col => renderCell(col + row))}
+                      <td colSpan={2} className={"summary-label-cell " + (selected === "E" + row ? "selected-cell" : "")}><button type="button" onClick={() => setSelected("E" + row)}>{SUMMARY_LABELS[row]}</button></td>
+                      {renderCell("F" + row)}
+                    </>
+                  ) : COLUMNS.map(col => {
+                    const address = col + row;
+                    if (row === 1) {
+                      return <td key={address} className={"column-title " + (selected === address ? "selected-cell" : "")}><button type="button" onClick={() => setSelected(address)}>{drafts[address] ?? ""}</button></td>;
+                    }
+                    return renderCell(address);
+                  })}
+                </tr>
+              ))}
+            </tbody>
           </table>
         </div>
-
-        <div className="sheet-footer">
-          <div className="sheet-tab"><span>▦</span> Sheet1 <i /></div>
-          <div className="sheet-footer-meta">
-            <span>{Object.keys(drafts).filter(c => (drafts[c] ?? "").trim() !== "").length} populated cells</span>
-            <span className="footer-separator">·</span>
-            <span>{Object.keys(formulasAndValues.formulas).length} formulas</span>
-            {errorCount > 0 && <span className="error-summary">{errorCount} error{errorCount === 1 ? "" : "s"} detected</span>}
-            {lastCalculated && <span className="calculated-time">Calculated {lastCalculated.toLocaleTimeString()}</span>}
-          </div>
-        </div>
+        <footer className="sheet-statusbar">
+          <div className="sheet-tabs"><button type="button" className="sheet-tab-plus" title="New workbook" onClick={newWorkbook}>＋</button><button type="button" className="sheet-menu" title="Workbook actions" onClick={() => setRibbonTab("file")}>☰</button><button type="button" className="sheet-tab active" onClick={() => setRibbonTab("home")}>Stock Details <span /></button><button type="button" className={"sheet-tab " + (ribbonTab === "compiler" ? "active" : "")} onClick={() => jumpToCompiler(compilerStage)}>Compiler Output <span /></button></div>
+          <div className="sheet-status-right"><span>{Object.keys(drafts).filter(cell => drafts[cell] !== "").length} populated cells</span><span>•</span><span>{formulaCells.length} formulas</span>{errorCount > 0 && <span className="sheet-errors">{errorCount} errors</span>}{lastCalculated && <span>Calculated {lastCalculated.toLocaleTimeString()}</span>}</div>
+        </footer>
       </section>
 
-      {activeTab !== "spreadsheet" && (
-        <section className="diagnostics-panel" aria-live="polite">
-          <header className="diagnostics-header">
-            <div>
-              <div className="panel-eyebrow">COMPILER WORKBENCH / {activeTabInfo.number}</div>
-              <h2>{activeTabInfo.title}</h2>
-              <p>{activeTabInfo.caption} for the currently selected formula cell.</p>
-            </div>
-            <label className="cell-picker">
-              <span>INSPECT CELL</span>
-              <select value={selected} onChange={event => setSelected(event.target.value)}>
-                {inspectionCells.map(cell => (
-                  <option value={cell} key={cell}>{cell}</option>
-                ))}
-              </select>
-            </label>
-          </header>
-
-          {activeTab === "lexical" && (
-            <div className="diagnostic-body">
-              <div className="diagnostic-metrics">
-                <div><span>Source formula</span><strong className="metric-formula">{drafts[selected] || "—"}</strong></div>
-                <div><span>Tokens emitted</span><strong>{tokenCount}</strong></div>
-                <div><span>Lexer status</span><strong className={result.errors[selected] && !result.tokens?.[selected] ? "metric-error" : "metric-good"}>{result.errors[selected] && !result.tokens?.[selected] ? "Error" : selectedTokens.length ? "Complete" : "Waiting"}</strong></div>
-              </div>
-              {result.errors[selected] && !result.tokens?.[selected] ? (
-                <div className="diagnostic-alert"><strong>Lexical / syntax diagnostic</strong><p>{result.errors[selected]}</p><small>Check the formula prefix, function name and characters, then edit the cell in the formula bar.</small></div>
-              ) : selectedTokens.length ? (
-                <div className="data-table-wrap">
-                  <table className="diagnostic-table">
-                    <thead><tr><th>#</th><th>Token type</th><th>Lexeme</th><th>Column</th><th>Status</th></tr></thead>
-                    <tbody>{selectedTokens.map((token, index) => (
-                      <tr key={selected + "-" + index}>
-                        <td className="mono muted-cell">{String(index + 1).padStart(2, "0")}</td>
-                        <td><span className="token-badge">{token.type}</span></td>
-                        <td className="mono token-lexeme">{token.text || "∅"}</td>
-                        <td className="mono muted-cell">{token.column}</td>
-                        <td><span className="status-dot status-dot-good" /> emitted</td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
-                </div>
-              ) : <div className="empty-diagnostic"><span>∅</span><strong>No formula to tokenize</strong><p>Select a cell with a formula beginning with <code>=</code>, or enter one in the formula bar.</p></div>}
-            </div>
-          )}
-
-          {activeTab === "ast" && (
-            <div className="diagnostic-body">
-              <div className="diagnostic-section-heading"><div><span className="section-marker">AST</span><strong>Abstract syntax tree</strong></div><span>{selectedAst ? "PARSE SUCCESS" : "NO TREE"}</span></div>
-              {selectedAst ? (
-                <div className="ast-workspace">
-                  <div className="ast-source"><span>INPUT FORMULA</span><code>{drafts[selected] || "—"}</code></div>
-                  <pre className="ast-tree">{selectedAst}</pre>
-                  <div className="ast-footnote"><span className="status-dot status-dot-good" /> Recursive-descent parser produced a syntax tree for {selected}.</div>
-                </div>
-              ) : (
-                <div className="diagnostic-alert"><strong>AST not available</strong><p>{result.errors[selected] || "This cell has no formula yet."}</p><small>Correct the formula to generate its abstract syntax tree.</small></div>
-              )}
-            </div>
-          )}
-
-          {activeTab === "dependencies" && (
-            <div className="diagnostic-body">
-              <div className="diagnostic-metrics">
-                <div><span>Formula cells</span><strong>{formulaCells.length}</strong></div>
-                <div><span>Selected dependencies</span><strong>{selectedDependencies.length}</strong></div>
-                <div><span>Cycle / error report</span><strong className={errorCount ? "metric-error" : "metric-good"}>{errorCount ? errorCount + " issue(s)" : "Clear"}</strong></div>
-              </div>
-              {formulaCells.length ? (
-                <div className="dependency-list">
-                  {formulaCells.map(cell => {
-                    const dependencies = result.dependencies?.[cell] ?? [];
-                    return (
-                      <article className={"dependency-row " + (cell === selected ? "dependency-row-selected" : "")} key={cell}>
-                        <button className="dependency-source" onClick={() => setSelected(cell)} title={"Inspect " + cell}>
-                          <span className="dep-kind">FORMULA</span><strong>{cell}</strong><code>{drafts[cell]}</code>
-                          {result.errors[cell] && <span className="dep-error">ERROR</span>}
-                          {!result.errors[cell] && result.values[cell] !== undefined && <span className="dep-value">{displayNumber(result.values[cell])}</span>}
-                        </button>
-                        <div className="dependency-arrow"><span>depends on</span><b>→</b></div>
-                        <div className="dependency-targets">
-                          {dependencies.length ? dependencies.map(dep => {
-                            const isFormula = Boolean(formulasAndValues.formulas[dep]);
-                            const hasValue = formulasAndValues.values[dep] !== undefined || result.values[dep] !== undefined;
-                            return <button key={cell + "-" + dep} type="button"
-                              className={"dependency-chip " + (isFormula ? "dep-formula" : hasValue ? "dep-input" : "dep-blank")}
-                              onClick={() => { setSelected(dep); }}
-                              title={isFormula ? "Formula dependency" : hasValue ? "Input value" : "Blank cell in referenced range"}>
-                              {dep}<small>{isFormula ? "ƒx" : hasValue ? "IN" : "BLANK"}</small>
-                            </button>;
-                          }) : <span className="no-dependencies">No cell dependencies</span>}
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              ) : <div className="empty-diagnostic"><span>↗</span><strong>No dependency graph yet</strong><p>Add a formula such as <code>=A1+B1</code> to see its references here.</p></div>}
-              <p className="diagnostic-note">Range references are expanded into individual cell addresses. Blank cells appear as BLANK, and formula cells are marked ƒx.</p>
-            </div>
-          )}
-
-          {activeTab === "evaluation" && (
-            <div className="diagnostic-body">
-              <div className="diagnostic-metrics">
-                <div><span>Evaluation order</span><strong>{result.evaluationOrder.length}</strong></div>
-                <div><span>Calculated formulas</span><strong>{Object.keys(result.values).length}</strong></div>
-                <div><span>Errors</span><strong className={errorCount ? "metric-error" : "metric-good"}>{errorCount}</strong></div>
-              </div>
-              {result.evaluationOrder.length ? (
-                <div className="data-table-wrap">
-                  <table className="diagnostic-table">
-                    <thead><tr><th>Order</th><th>Cell</th><th>Formula</th><th>Computed value</th><th>Result</th></tr></thead>
-                    <tbody>{result.evaluationOrder.map((cell, index) => (
-                      <tr key={cell} className={cell === selected ? "evaluation-selected" : ""}>
-                        <td className="mono muted-cell">{String(index + 1).padStart(2, "0")}</td>
-                        <td><button className="cell-link" onClick={() => setSelected(cell)}>{cell}</button></td>
-                        <td className="mono formula-text">{drafts[cell] || "—"}</td>
-                        <td className="mono">{result.values[cell] === undefined ? "—" : displayNumber(result.values[cell])}</td>
-                        <td>{result.errors[cell] ? <span className="result-error">ERROR</span> : result.values[cell] !== undefined ? <span className="result-success">SUCCESS</span> : <span className="muted-cell">NO VALUE</span>}</td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
-                </div>
-              ) : <div className="empty-diagnostic"><span>∑</span><strong>No evaluation results yet</strong><p>Enter formulas into the spreadsheet. Results and errors will appear here.</p></div>}
-              {errorCount > 0 && <div className="diagnostic-alert"><strong>Cell diagnostics</strong>{Object.entries(result.errors).map(([cell, message]) => <p key={cell}><code>{cell}</code> — {message}</p>)}</div>}
-            </div>
-          )}
+      {showChart && (
+        <section className="profit-chart">
+          <header><div><div className="sheet-kicker">INSERTED CHART</div><h2>Daily profit overview</h2><p>Derived from the current computed values in column F.</p></div><button type="button" onClick={() => setShowChart(false)}>Hide chart ×</button></header>
+          <div className="profit-bars">{positives.map((value, index) => <div className="profit-bar-column" key={index}><strong>{displayNumber(value)}</strong><div className="profit-bar-track"><span className={value < 0 ? "negative" : ""} style={{ height: Math.max(5, Math.abs(value) / maxProfit * 100) + "%" }} /></div><small>{drafts["A" + (index + 2)] || "Day " + (index + 1)}</small></div>)}</div>
         </section>
       )}
 
-      <section className="bottom-grid">
-        <article className="info-panel">
-          <div className="panel-eyebrow">COMPILER PIPELINE</div>
-          <h2>Under the hood</h2>
-          <div className="pipeline-list">
-            <button type="button" onClick={() => setActiveTab("lexical")}><span className="step-num">01</span><span><strong>Lex</strong><small>Formula text → token stream</small></span><span className="step-check">↗</span></button>
-            <button type="button" onClick={() => setActiveTab("ast")}><span className="step-num">02</span><span><strong>Parse</strong><small>Token stream → AST</small></span><span className="step-check">↗</span></button>
-            <button type="button" onClick={() => setActiveTab("dependencies")}><span className="step-num">03</span><span><strong>Analyze</strong><small>Dependencies + cycle checks</small></span><span className="step-check">↗</span></button>
-            <button type="button" onClick={() => setActiveTab("evaluation")}><span className="step-num">04</span><span><strong>Evaluate</strong><small>Order → cell values</small></span><span className="step-check">↗</span></button>
-          </div>
-        </article>
-        <article className="info-panel examples-panel">
-          <div className="panel-eyebrow">QUICK START</div>
-          <h2>Try a formula</h2>
-          <p>Select any cell, then type a value or formula into the formula bar.</p>
-          <button type="button" className="example-line" onClick={() => { setSelected("D1"); setActiveTab("lexical"); }}><code>=SUM(A1:B4)</code><span>Inspect its tokens →</span></button>
-          <button type="button" className="example-line" onClick={() => { setSelected("C1"); setActiveTab("ast"); }}><code>=A1+B1</code><span>Inspect its AST →</span></button>
-          <button type="button" className="example-line" onClick={() => setActiveTab("evaluation")}><code>Evaluation order</code><span>Open runtime results →</span></button>
-          <div className="help-note">{status === "offline" ? "Start the C++ API with make server to enable live calculations." : "Results recalculate automatically after each edit."}</div>
-        </article>
-      </section>
+      {ribbonTab === "compiler" && renderCompilerPanel()}
 
-      <footer className="page-footer"><span>CELLSCRIPT <b>·</b> BCSE307L COMPILER DESIGN</span><span>C++17 · REACT · DEPENDENCY GRAPH</span></footer>
+      <section className="workbook-footer">
+        <div><span className="footer-brand-mark">▦</span><strong>CELLSCRIPT</strong><span>SPREADSHEET FORMULA COMPILER</span></div>
+        <div className="footer-metrics"><span>Average profit <strong>{averageProfit === undefined ? "—" : displayNumber(averageProfit)}</strong></span><span>Max high <strong>{maxStock === undefined ? "—" : displayNumber(maxStock)}</strong></span><span>Min low <strong>{minStock === undefined ? "—" : displayNumber(minStock)}</strong></span><span>Rows counted <strong>{tradingDays === undefined ? "—" : displayNumber(tradingDays)}</strong></span></div>
+      </section>
     </main>
   );
 }
