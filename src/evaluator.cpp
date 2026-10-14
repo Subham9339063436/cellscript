@@ -147,7 +147,7 @@ double SpreadsheetEvaluator::evaluateNode(const ASTPtr& n,const std::string& own
         if(n->text=="SUM") { double s=0; for(double v:vs)s+=v; return s; }
         if(n->text=="COUNT") return static_cast<double>(vs.size());
         if(vs.empty()) throw std::runtime_error(n->text+" requires at least one argument");
-        if(n->text=="AVG") { double s=0;for(double v:vs)s+=v;return s/static_cast<double>(vs.size()); }
+        if(n->text=="AVG" || n->text=="AVERAGE") { double s=0;for(double v:vs)s+=v;return s/static_cast<double>(vs.size()); }
         if(n->text=="MAX") return *std::max_element(vs.begin(),vs.end());
         if(n->text=="MIN") return *std::min_element(vs.begin(),vs.end());
         throw std::runtime_error("Unsupported function "+n->text);
