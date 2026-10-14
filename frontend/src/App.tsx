@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 type AnalysisToken = { type: string; text: string; column: number };
 type ApiResult = {
@@ -12,6 +12,73 @@ type ApiResult = {
 type Status = "connecting" | "online" | "offline";
 type RibbonTab = "file" | "home" | "insert" | "formulas" | "data" | "view" | "compiler";
 type CompilerStage = "lexical" | "ast" | "dependencies" | "evaluation";
+
+type AstTreeNode = { id: string; label: string; kind: "operator" | "function" | "reference" | "range" | "number"; children: AstTreeNode[] };
+
+function describeAstLabel(label: string): { kind: AstTreeNode["kind"]; title: string; detail: string } {
+  const match = /^(BinaryOp|FuncCall|CellRef|Range|Number)\\((.*)\\)$/.exec(label.trim());
+  if (!match) return { kind: "number", title: label, detail: "AST node" };
+  const [, type, value] = match;
+  switch (type) {
+    case "BinaryOp": return { kind: "operator", title: value, detail: "Operator" };
+    case "FuncCall": return { kind: "function", title: value, detail: "Function call" };
+    case "CellRef": return { kind: "reference", title: value, detail: "Cell reference" };
+    case "Range": return { kind: "range", title: value, detail: "Cell range" };
+    default: return { kind: "number", title: value, detail: "Numeric literal" };
+  }
+}
+
+function parseAstTree(source: string): AstTreeNode | null {
+  const lines = source.split(/\\r?\\n/).filter(line => line.trim().length > 0);
+  const roots: AstTreeNode[] = [];
+  const stack: Array<{ depth: number; node: AstTreeNode }> = [];
+  lines.forEach((line, index) => {
+    const leading = line.match(/^\\s*/)?.[0].length ?? 0;
+    const depth = Math.floor(leading / 2);
+    const node: AstTreeNode = {
+      id: "ast-" + index,
+      label: line.trim(),
+      kind: describeAstLabel(line.trim()).kind,
+      children: []
+    };
+    while (stack.length && stack[stack.length - 1].depth >= depth) stack.pop();
+    const parent = stack[stack.length - 1]?.node;
+    if (parent) parent.children.push(node);
+    else roots.push(node);
+    stack.push({ depth, node });
+  });
+  return roots[0] ?? null;
+}
+
+function countAstNodes(node: AstTreeNode | null): number {
+  if (!node) return 0;
+  return 1 + node.children.reduce((count, child) => count + countAstNodes(child), 0);
+}
+
+function renderAstTreeNode(node: AstTreeNode): ReactNode {
+  const description = describeAstLabel(node.label);
+  return (
+    <div className="ast-graph-node" key={node.id}>
+      <div className={"ast-node-card ast-node-" + description.kind} title={node.label}>
+        <span className="ast-node-kind">{description.detail}</span>
+        <strong>{description.title}</strong>
+        <code>{node.label}</code>
+      </div>
+      {node.children.length > 0 && (
+        <>
+          <span className="ast-graph-stem" aria-hidden="true" />
+          <div className={"ast-graph-children " + (node.children.length === 1 ? "single-child" : "multiple-children")}>
+            {node.children.map(child => (
+              <div className="ast-graph-child-slot" key={child.id}>
+                {renderAstTreeNode(child)}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 const RIBBON_TABS: { id: RibbonTab; label: string }[] = [
   { id: "file", label: "File" },
@@ -345,6 +412,8 @@ export default function App() {
   const selectedTokens = result.tokens?.[selected] ?? [];
   const selectedDependencies = result.dependencies?.[selected] ?? [];
   const selectedAst = result.asts?.[selected];
+  const selectedAstTree = useMemo(() => selectedAst ? parseAstTree(selectedAst) : null, [selectedAst]);
+  const selectedAstNodeCount = countAstNodes(selectedAstTree);
   const tokenCount = selectedTokens.filter(token => !["EOF", "EndOfInput", "eof"].includes(token.type)).length;
   const positives = Array.from({ length: 9 }, (_, i) => result.values["F" + (i + 2)] ?? 0);
   const maxProfit = Math.max(1, ...positives.map(value => Math.abs(value)));
@@ -383,8 +452,29 @@ export default function App() {
             </>
           )}
           {compilerStage === "ast" && (
-            selectedAst ? <div className="ast-view"><div className="ast-source-line"><span>FORMULA</span><code>{selectedSource}</code></div><pre>{selectedAst}</pre><div className="ast-footer">✓ Recursive-descent parser returned an AST for {selected}.</div></div>
-              : <div className={result.errors[selected] ? "analysis-error" : "analysis-empty"}>{result.errors[selected] || "This cell does not currently contain a valid formula."}</div>
+            selectedAst && selectedAstTree ? (
+              <div className="ast-view ast-visual-view">
+                <div className="ast-source-line"><span>FORMULA</span><code>{selectedSource}</code></div>
+                <div className="ast-graph-toolbar">
+                  <div><strong>Abstract syntax tree</strong><span>Root-to-leaf parse structure for {selected}</span></div>
+                  <div className="ast-graph-count"><strong>{selectedAstNodeCount}</strong><span>nodes</span></div>
+                </div>
+                <div className="ast-graph-legend">
+                  <span><i className="legend-operator" />Operator</span>
+                  <span><i className="legend-function" />Function</span>
+                  <span><i className="legend-reference" />Cell reference</span>
+                  <span><i className="legend-number" />Number / range</span>
+                </div>
+                <div className="ast-graph-scroll" role="region" aria-label={"Parse tree for " + selected} tabIndex={0}>
+                  <div className="ast-graph-canvas">{renderAstTreeNode(selectedAstTree)}</div>
+                </div>
+                <div className="ast-footer"><span className="ast-ok-mark">✓</span> Parsed from the live formula by the CellScript recursive-descent parser. Parent-child connections represent AST edges.</div>
+              </div>
+            ) : (
+              <div className={result.errors[selected] ? "analysis-error" : "analysis-empty"}>
+                {result.errors[selected] || "This cell does not currently contain a valid formula."}
+              </div>
+            )
           )}
           {compilerStage === "dependencies" && (
             <>
