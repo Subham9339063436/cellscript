@@ -55,7 +55,7 @@ const SUMMARY_LABELS: Record<number, string> = {
   14: "Trading days:"
 };
 const SUMMARY_FORMULAS: Record<string, string> = {
-  F11: "=AVERAGE(F2:F10)",
+  F11: "=AVG(F2:F10)",
   F12: "=MAX(D2:D10)",
   F13: "=MIN(E2:E10)",
   F14: "=COUNT(F2:F10)"
@@ -204,7 +204,7 @@ export default function App() {
       }
       rows.push(line);
     }
-    const csv = rows.map(row => row.map(value => '"' + value.replaceAll('"', '""') + '"').join(",")).join("\\r\\n");
+    const csv = rows.map(row => row.map(value => '"' + value.replace(/"/g, '""') + '"').join(",")).join("\\r\\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const href = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
