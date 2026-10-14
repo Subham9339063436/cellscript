@@ -7,7 +7,7 @@
 
 namespace {
 const std::unordered_set<std::string> kFunctions = {
-    "SUM", "AVG", "MAX", "MIN", "COUNT"
+    "SUM", "AVG", "AVERAGE", "MAX", "MIN", "COUNT"
 };
 
 std::string toUpper(std::string value) {
