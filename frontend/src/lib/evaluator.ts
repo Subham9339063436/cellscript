@@ -21,7 +21,7 @@ type Node =
   | { kind: "binary"; op: string; left: Node; right: Node; column: number }
   | { kind: "call"; name: string; args: Node[]; column: number };
 
-const FUNCTIONS = new Set(["SUM", "AVG", "MAX", "MIN", "COUNT"]);
+const FUNCTIONS = new Set(["SUM", "AVG", "AVERAGE", "MAX", "MIN", "COUNT"]);
 
 class FormulaError extends Error {
   constructor(public category: "Lexical" | "Syntax" | "Semantic", public column: number, message: string) {
@@ -348,7 +348,7 @@ export function evaluateWorkbook(input: WorkbookRequest): WorkbookResponse {
         if (node.name === "SUM") return args.reduce((sum, value) => sum + value, 0);
         if (node.name === "COUNT") return args.length;
         if (args.length === 0) throw new Error(node.name + " requires at least one populated numeric argument");
-        if (node.name === "AVG") return args.reduce((sum, value) => sum + value, 0) / args.length;
+        if (node.name === "AVG" || node.name === "AVERAGE") return args.reduce((sum, value) => sum + value, 0) / args.length;
         if (node.name === "MAX") return Math.max(...args);
         if (node.name === "MIN") return Math.min(...args);
         throw new Error("Unsupported function " + node.name);
