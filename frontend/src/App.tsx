@@ -230,7 +230,9 @@ export default function App() {
   }
   function insertFunction(name: "SUM" | "AVERAGE" | "MAX" | "MIN" | "COUNT") {
     const col = isColumn(selected, "F") ? "F" : isColumn(selected, "D") ? "D" : "F";
-    const formula = name + "(" + col + FIRST_DATA_ROW + ":" + col + LAST_DATA_ROW + ")";
+    // The compiler grammar calls AVERAGE "AVG"; insert the supported name.
+    const formulaName = name === "AVERAGE" ? "AVG" : name;
+    const formula = formulaName + "(" + col + FIRST_DATA_ROW + ":" + col + LAST_DATA_ROW + ")";
     updateSelected("=" + formula);
     setRibbonTab("home");
   }
