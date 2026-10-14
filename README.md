@@ -1,57 +1,99 @@
-# CellScript — Phase 2
+# CellScript — Spreadsheet Formula Compiler
 
-CellScript is a spreadsheet formula-language compiler built for BCSE307L Compiler Design. The C++17 core extends the Phase 1 lexer, recursive-descent parser and AST with a symbol table, dependency extraction, circular-reference detection and dependency-aware evaluation. A native HTTP API connects the evaluator to a React/Vite spreadsheet UI.
+[![CI](https://github.com/Subham9339063436/cellscript/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Subham9339063436/cellscript/actions/workflows/ci.yml)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-000000?logo=vercel)](https://cellscript.vercel.app)
+
+**Live application:** [https://cellscript.vercel.app](https://cellscript.vercel.app)  
+**API health:** [https://cellscript.vercel.app/api/health](https://cellscript.vercel.app/api/health)  
+**Repository:** [Subham9339063436/cellscript](https://github.com/Subham9339063436/cellscript)
+
+CellScript is a spreadsheet-style formula compiler and evaluator built for Compiler Design. It combines a C++17 lexer, recursive-descent parser, abstract syntax tree (AST), dependency analysis and evaluator with a React/TypeScript spreadsheet dashboard. The Compiler workbench exposes the stages of formula processing so you can inspect tokens, the visual AST, cell dependencies and computed results.
 
 ## Features
 
-- Arithmetic: `+`, `-`, `*`, `/`, parentheses and unary minus
-- Cell references such as `A1` and `AA12`
-- Rectangular ranges, including reversed ranges
-- Built-in functions: `SUM`, `AVG`, `MAX`, `MIN`, `COUNT`
-- Formula dependencies are evaluated before their dependants
-- Circular-reference detection with a cycle path
-- Cell-specific errors for missing references, invalid formulas and division by zero
-- Spreadsheet grid with a formula bar, live calculated values, error indicators and sample workbook
-- HTTP JSON endpoint so the React frontend uses the same C++ compiler/evaluator
+### Spreadsheet dashboard
+- Excel-inspired grid, formula bar, cell selection and direct cell editing.
+- Sample stock-details workbook with calculated profit and summary formulas.
+- Live recalculation, formula errors and cell-reference feedback.
+- Browser autosave, undo/redo, formula display and grid/view controls.
+- CSV export and a simple chart view.
 
-Blank cells in aggregate ranges are ignored. SUM of an empty range is zero, AVG/MAX/MIN require at least one populated numeric value, and COUNT counts populated numeric cells. A direct reference to a missing cell is an error. Range expansion is limited to 100,000 cells.
+### Compiler workbench
+- **Lexical analysis:** token stream, token types and source positions.
+- **AST parsing:** graphical node-and-connector tree, with distinct styles for operators, functions, cell references, ranges and numeric literals.
+- **Dependency resolution:** formula-to-cell references, including ranges.
+- **Evaluation:** calculation order, computed values and cell-specific errors.
 
-## Requirements
+### Formula language
+Supports numeric literals, cell references (for example `A1` or `AA12`), rectangular ranges, parentheses, unary minus and the arithmetic operators `+`, `-`, `*` and `/`.
 
-- C++17 compiler and Make (GCC/Clang; macOS or Linux)
-- Python 3 and pytest for regression tests
-- Node.js and npm for the React frontend
+Supported functions:
+- `SUM(range)`
+- `AVG(range)` and `AVERAGE(range)`
+- `MAX(range)`
+- `MIN(range)`
+- `COUNT(range)`
 
-## Run the C++ compiler and tests
+The evaluator resolves dependencies before their dependants and detects circular references. It reports issues such as missing direct references, invalid formulas and division by zero. Blank cells inside aggregate ranges are ignored; `COUNT` counts populated numeric cells. Range expansion is limited to 100,000 cells.
 
-From the repository root:
+## Live demo and hosted API
+
+The deployed frontend and Vercel API are served from the same origin:
+
+| Route | Purpose |
+|---|---|
+| [`/`](https://cellscript.vercel.app) | Spreadsheet dashboard |
+| [`/api/health`](https://cellscript.vercel.app/api/health) | Health-check endpoint |
+| `POST /api/evaluate` | Evaluate a workbook and return values, errors, token streams, AST text and dependencies |
+| [`/api/evaluate?diagnostic=1`](https://cellscript.vercel.app/api/evaluate?diagnostic=1) | Browser-accessible smoke test for arithmetic, range functions, AST generation and tokens |
+
+The hosted application does **not** depend on a C++ process running on your laptop. The C++ engine and native HTTP server are available for local development; the Vercel deployment uses serverless API handlers so hosted calculations can run independently.
+
+## Tech stack
+
+- **Compiler / native API:** C++17, Make, POSIX sockets.
+- **Spreadsheet UI:** React 18, TypeScript, Vite and CSS.
+- **Hosted API:** Vercel serverless functions.
+- **Tests / automation:** C++ evaluator tests, Python/pytest API and regression tests, GitHub Actions.
+
+## Run locally
+
+### Requirements
+- C++17 compiler and Make (Clang or GCC).
+- Python 3 and `pytest`.
+- Node.js and npm.
+
+### 1. Clone and build
 
 ```bash
-make
-make run
-make eval
+git clone https://github.com/Subham9339063436/cellscript.git
+cd cellscript
+
+make clean all
+```
+
+### 2. Run tests
+
+```bash
+python3 -m pip install pytest
 make test
 ```
 
-To inspect the lexer token stream and AST:
+The test command builds the native evaluator and runs the regression and HTTP API tests.
 
-```bash
-./build/cellscript "=SUM(A1:B3)+C2*2"
-```
+### 3. Start the local C++ API
 
-## Run the complete application
-
-Open two terminals from the repository root.
-
-**Terminal 1 — start the C++ API:**
+In the first terminal, from the repository root:
 
 ```bash
 make server
 ```
 
-The API listens on `http://localhost:8080`. Use a different port with `./build/cellscript-api 8081`.
+The native API listens on [`http://localhost:8080`](http://localhost:8080). Keep this terminal running while using the local frontend.
 
-**Terminal 2 — start the React spreadsheet:**
+### 4. Start the frontend
+
+Open a second terminal:
 
 ```bash
 cd frontend
@@ -59,45 +101,87 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite (usually `http://localhost:5173`). To point the UI at another API URL, set `VITE_API_URL` before starting Vite, for example `VITE_API_URL=http://localhost:8081 npm run dev`.
+Open the local URL printed by Vite (usually [`http://localhost:5173`](http://localhost:5173)). During local development, the frontend calls the C++ API at `http://localhost:8080`. For the public Vercel deployment, requests use the same-origin `/api` routes.
 
-## HTTP API
+### Optional: inspect a formula using the native compiler
 
-- `GET /health` returns service status.
-- `POST /evaluate` accepts a JSON object with `formulas` (cell-to-formula strings) and `values` (cell-to-number constants).
+From the repository root:
 
-Example request:
+```bash
+./build/cellscript "=SUM(A1:B3)+C2*2"
+```
+
+Other useful Make targets:
+
+```bash
+make run       # run the compiler example
+make eval      # run the evaluator demo
+make server    # start the native HTTP API
+make test      # run tests
+make clean     # remove generated build files
+```
+
+## HTTP API (local)
+
+The local C++ API provides `GET /health` and `POST /evaluate`.
+
+Example evaluation request:
 
 ```bash
 curl -X POST http://localhost:8080/evaluate \
   -H 'Content-Type: application/json' \
-  -d '{"formulas":{"A1":"=10","A2":"=20","B1":"=A1+A2","C1":"=SUM(A1:A2)"},"values":{}}'
+  -d '{"formulas":{"A1":"=10+20","B1":"=SUM(A1:A1)"},"values":{}}'
 ```
 
-The response contains `values`, `errors`, and `evaluationOrder` maps/arrays. Cells with errors are returned in the error map, rather than as calculated numeric values.
+The response contains computed `values`, an `errors` map, `evaluationOrder`, token streams, AST representations and dependency lists.
+
+## Deploy to Vercel
+
+The GitHub repository keeps the frontend and Vercel functions in `frontend/`. To connect the repository to a new Vercel project, use:
+
+1. Import [the CellScript GitHub repository](https://github.com/Subham9339063436/cellscript).
+2. Set **Root Directory** to `frontend`.
+3. Select **Vite** as the framework preset.
+4. Set the build command to `npm run build` and output directory to `dist`.
+5. Deploy, then test `/api/health` and the dashboard's formula evaluation.
+
+The current live deployment is [cellscript.vercel.app](https://cellscript.vercel.app).
 
 ## Project structure
 
 ```text
-include/           AST, lexer/parser interfaces and evaluator interface
-src/               C++ compiler, evaluator and HTTP API
-tests/             Phase 1 regression tests and Phase 2 evaluator tests
-frontend/          React + TypeScript + Vite spreadsheet UI
-docs/PHASE2.md     Design, algorithms and API notes
+include/                 C++ AST, lexer, parser and evaluator interfaces
+src/                     C++ compiler, evaluator and native HTTP server
+tests/                   C++ evaluator and Python regression/API tests
+docs/PHASE2.md            Phase 2 design and implementation notes
+frontend/src/             React spreadsheet and compiler workbench
+frontend/src/lib/          TypeScript formula evaluator used by the frontend API
+frontend/api/              Vercel serverless health and evaluation routes
+frontend/vercel.json       Vercel configuration
+.github/workflows/ci.yml   Automated build and test workflow
+Makefile                  Native build, run, server and test targets
 ```
-
-The API uses a small POSIX socket server with a constrained JSON reader to keep the project self-contained; it does not require a separate HTTP library. The server binds to loopback (localhost) on macOS or Linux by default.
 
 ## Compiler pipeline
 
 ```text
-Cell formula text → Lexer → Parser → AST
-                                      ↓
-                     Symbol table + dependencies
-                                      ↓
-                       DFS circularity analysis
-                                      ↓
-                       Dependency-first evaluation
-                                      ↓
-                       HTTP JSON result → React grid
+Formula text
+    ↓
+Lexer ──→ Token stream
+    ↓
+Recursive-descent parser
+    ↓
+AST
+    ↓
+Dependency extraction and circular-reference analysis
+    ↓
+Dependency-first evaluation
+    ↓
+Computed values + diagnostics
+    ↓
+Spreadsheet grid and Compiler workbench
 ```
+
+## CI
+
+GitHub Actions builds the native compiler/API, runs the C++ and Python tests, and builds the React/Vite frontend. See [the workflow runs](https://github.com/Subham9339063436/cellscript/actions).
