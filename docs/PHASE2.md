@@ -32,8 +32,20 @@ The native API server listens on port 8080 by default. It serves `GET /health` a
 
 The response includes `values`, `errors`, and `evaluationOrder`. The frontend sends the full workbook after an edit and renders returned values and errors. The server uses a small POSIX socket implementation and a purpose-built parser for the expected JSON request shape. It binds to loopback by default for local development and is not exposed to other machines on the network.
 
-## 7. Frontend
-The React/Vite interface shows a 10-column by 15-row grid, a formula bar, selected-cell highlighting, error indicators, sample values/formulas, and automatic recalculation through the API. Its interactive tabs expose the token stream from lexical analysis, AST text from parsing, extracted per-cell dependencies, and dependency-first evaluation order with calculated values and cell errors. The API returns these diagnostic fields for both the local C++ server and Vercel's TypeScript function. Numeric entries are sent as input values; formula strings beginning with `=` are sent through the compiler.
+## 7. Frontend and Compiler workbench
+The React/Vite spreadsheet includes the sample Stock Details workbook, formula bar, selected-cell highlighting, editing controls, formula-derived Profit values and summary formulas. Cell contents are saved in browser storage for the current browser.
+
+The Compiler ribbon links the selected cell to four views:
+- **Lexical analysis:** token stream, token kinds and source-column positions.
+- **AST parsing:** a graphical node-and-edge tree generated from the parser's AST representation. The root operator/function and child references, ranges or literals render as separate nodes.
+- **Dependency resolution:** direct cell references and expanded ranges used by a formula.
+- **Evaluation:** dependency-first calculation order, returned values and cell-specific errors.
+
+During local development the frontend can call the native C++ HTTP server. The deployed Vercel app uses same-origin TypeScript serverless endpoints at `/api/health` and `/api/evaluate`; Vercel does not run the C++ executable and the hosted application does not depend on a laptop process. The TypeScript implementation returns the same response shape so the UI can render values, errors, tokens, ASTs and dependency lists. Numeric entries are sent as input values; strings beginning with `=` are sent as formulas.
+
+Live application: https://cellscript.vercel.app  
+Health endpoint: https://cellscript.vercel.app/api/health  
+Evaluator diagnostic: https://cellscript.vercel.app/api/evaluate?diagnostic=1
 
 ## 8. Testing
 Run `make test` for Phase 1 lexer/parser regression tests, C++ evaluator tests and HTTP health/evaluation tests. Coverage includes forward references, aggregate functions, blank range cells, cycles, missing direct references, division by zero, numeric input cells and JSON API evaluation. GitHub Actions also builds the frontend bundle.
