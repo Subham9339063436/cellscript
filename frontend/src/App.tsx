@@ -240,7 +240,7 @@ export default function App() {
     setCompilerStage(stage);
     setRibbonTab("compiler");
   }
-  function moveSelection(key: string) {
+  function moveSelection(key: string, shiftKey = false) {
     const match = /^([A-F])(\\d+)$/.exec(selected);
     if (!match) return;
     let col = COLUMNS.indexOf(match[1] as typeof COLUMNS[number]);
@@ -249,7 +249,7 @@ export default function App() {
     if (key === "ArrowDown" || key === "Enter") row += 1;
     if (key === "ArrowLeft") col -= 1;
     if (key === "ArrowRight" || key === "Tab") col += 1;
-    if (key === "Tab" && (window.event as KeyboardEvent | undefined)?.shiftKey) col -= 2;
+    if (key === "Tab" && shiftKey) col -= 2;
     row = Math.min(DISPLAY_ROWS.length, Math.max(1, row));
     col = Math.min(COLUMNS.length - 1, Math.max(0, col));
     setSelected(COLUMNS[col] + row);
@@ -303,7 +303,7 @@ export default function App() {
             onKeyDown={event => {
               if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Tab"].includes(event.key)) {
                 event.preventDefault();
-                moveSelection(event.key);
+                moveSelection(event.key, event.shiftKey);
               }
               if (event.key === "F2") { event.preventDefault(); setEditingCell(cell); setEditingValue(drafts[cell] ?? ""); }
             }}
