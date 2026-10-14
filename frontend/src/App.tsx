@@ -95,8 +95,10 @@ const COMPILER_STAGES: { id: CompilerStage; label: string; caption: string }[] =
   { id: "dependencies", label: "Dependency resolution", caption: "Cell references" },
   { id: "evaluation", label: "Evaluation", caption: "Computed results" }
 ];
-const API_BASE = (import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "" : "http://localhost:8080")).replace(/\/$/, "");
-const API_PREFIX = import.meta.env.PROD && !import.meta.env.VITE_API_URL ? "/api" : "";
+// In production always call the same-origin Vercel Functions. Never let a
+// developer-only VITE_API_URL redirect the deployed app to localhost or another host.
+const API_BASE = (import.meta.env.PROD ? "" : (import.meta.env.VITE_API_URL || "http://localhost:8080")).replace(/\/$/, "");
+const API_PREFIX = import.meta.env.PROD ? "/api" : "";
 const COLUMNS = ["A", "B", "C", "D", "E", "F"] as const;
 const FIRST_DATA_ROW = 2;
 const LAST_DATA_ROW = 10;
@@ -169,6 +171,7 @@ export default function App() {
   const [compilerStage, setCompilerStage] = useState<CompilerStage>("lexical");
   const [result, setResult] = useState<ApiResult>(initialResult);
   const [status, setStatus] = useState<Status>("connecting");
+  const [apiError, setApiError] = useState<string | null>(null);
   const [lastCalculated, setLastCalculated] = useState<Date | null>(null);
   const [gridlines, setGridlines] = useState(true);
   const [showFormulas, setShowFormulas] = useState(false);
@@ -210,15 +213,25 @@ export default function App() {
           body: JSON.stringify(workbook),
           signal: controller.signal
         });
-        if (!response.ok) throw new Error("API returned HTTP " + response.status);
+        if (!response.ok) {
+          const detail = (await response.text()).slice(0, 320);
+          throw new Error("POST " + API_PREFIX + "/evaluate returned HTTP " + response.status + (detail ? ": " + detail : ""));
+        }
         const payload = await response.json() as ApiResult;
+        if (!payload || typeof payload !== "object" || !payload.values || !payload.errors || !payload.asts || !payload.dependencies) {
+          throw new Error("POST " + API_PREFIX + "/evaluate returned an unexpected response shape");
+        }
         if (!cancelled) {
           setResult(payload);
           setStatus("online");
+          setApiError(null);
           setLastCalculated(new Date());
         }
-      } catch {
-        if (!cancelled) setStatus("offline");
+      } catch (error) {
+        if (!cancelled) {
+          setStatus("offline");
+          setApiError(error instanceof Error ? error.message : String(error));
+        }
       }
     }, 120);
     return () => {
@@ -441,6 +454,7 @@ export default function App() {
           ))}
         </div>
         <div className="compiler-panel-body">
+          {apiError && <div className="analysis-error api-error-banner"><strong>API request failed</strong><p>{apiError}</p><small>Production requests should use same-origin routes /api/health and /api/evaluate.</small></div>}
           {compilerStage === "lexical" && (
             <>
               <div className="analysis-summary"><span>Token count <strong>{tokenCount}</strong></span><span>Selected cell <strong>{selected}</strong></span><span>Status <strong className={result.errors[selected] ? "error-text" : "success-text"}>{result.errors[selected] ? "Error" : selectedTokens.length ? "Complete" : "No formula"}</strong></span></div>
@@ -564,7 +578,7 @@ export default function App() {
       <header className="app-topbar">
         <a className="app-brand" href="#" aria-label="CellScript home"><span className="brand-grid"><i /><i /><i /><i /></span><span>CellScript</span></a>
         <div className="topbar-file"><span className="file-icon">▤</span><span>{workbookName}</span><button type="button" title="Rename workbook" onClick={() => { const name = window.prompt("Workbook name", workbookName); if (name?.trim()) setWorkbookName(name.trim()); }}>⌄</button><span className="saved-label">Auto-saved in this browser</span></div>
-        <div className="topbar-end"><span className={"engine-status " + status}><i />{status === "online" ? "Engine ready" : status === "connecting" ? "Connecting" : "Engine offline"}</span><button type="button" className="topbar-share" onClick={exportCsv}>Export ↓</button></div>
+        <div className="topbar-end"><span className={"engine-status " + status} title={apiError || undefined}><i />{status === "online" ? "Engine ready" : status === "connecting" ? "Connecting" : "Engine offline"}</span><button type="button" className="topbar-share" onClick={exportCsv}>Export ↓</button></div>
       </header>
 
       <section className="ribbon-shell">
