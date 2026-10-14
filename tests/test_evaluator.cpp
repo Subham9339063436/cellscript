@@ -39,13 +39,15 @@ int main() {
         auto functions = evaluator.evaluate({
             {"A1", "=10"}, {"A2", "=20"}, {"A3", "=30"},
             {"B1", "=SUM(A1:A3)"}, {"B2", "=AVG(A1:A3)"},
-            {"B3", "=MAX(A1:A3)"}, {"C1", "=MIN(A1:A3)"}
+            {"B3", "=MAX(A1:A3)"}, {"C1", "=MIN(A1:A3)"},
+            {"C2", "=AVERAGE(A1:A3)"}
         });
         require(functions.errors.empty(), "aggregate-function workbook should have no errors");
         require(near(functions.values.at("B1"), 60), "SUM should equal 60");
         require(near(functions.values.at("B2"), 20), "AVG should equal 20");
         require(near(functions.values.at("B3"), 30), "MAX should equal 30");
         require(near(functions.values.at("C1"), 10), "MIN should equal 10");
+        require(near(functions.values.at("C2"), 20), "AVERAGE alias should equal 20");
 
         auto cycle = evaluator.evaluate({{"A1", "=B1+1"}, {"B1", "=A1+1"}});
         require(cycle.errors.count("A1") && cycle.errors.count("B1"),
