@@ -1,15 +1,20 @@
 # Deploy CellScript to Vercel
 
-This directory is the Vercel project root. It contains the Vite React app plus two Vercel Node.js Functions, so the deployed UI does not call localhost.
+**Live application:** https://cellscript.vercel.app  
+**API health:** https://cellscript.vercel.app/api/health  
+**Evaluation smoke test:** https://cellscript.vercel.app/api/evaluate?diagnostic=1
+
+This directory is the Vercel project root when the repository is imported with Root Directory set to `frontend`. It contains the Vite/React application and two Vercel Node.js Functions. The deployed interface calls same-origin API routes; it must not call the developer's `localhost:8080`.
 
 ## Git integration deployment
 
-1. In Vercel, choose **Add New → Project** and import `Subham9339063436/cellscript`.
-2. Select the `phase-2-implementation` branch while the Phase 2 pull request is under review.
+1. In Vercel, choose **Add New → Project** and import [`Subham9339063436/cellscript`](https://github.com/Subham9339063436/cellscript).
+2. For the full Phase 2 application, select the `phase-2-implementation` branch or the merged default branch.
 3. Set **Root Directory** to `frontend`.
-4. Framework preset: **Vite**. Build command: `npm run build`. Output directory: `dist`. Install command: `npm install`.
-5. No environment variables are required for the same-origin Vercel API. Deploy.
-6. Once deployment finishes, test the website root and `/api/health`. In the UI, edit a formula and ensure values recalculate and formula errors are highlighted.
+4. Framework preset: **Vite**.
+5. Build command: `npm run build`; output directory: `dist`; install command: `npm install`.
+6. Do not set `VITE_API_URL` to localhost for production. The production frontend uses same-origin `/api/health` and `/api/evaluate` routes.
+7. Deploy. Verify the health route, then open the evaluation smoke test. Finally, edit a formula in the app and check the Profit column and Compiler workbench.
 
 ## Vercel CLI alternative
 
@@ -23,14 +28,22 @@ npx vercel deploy
 npx vercel deploy --prod
 ```
 
-The CLI may ask to select a team/scope and confirm the project settings.
+The CLI may ask you to select a team/scope and confirm project settings.
 
 ## Routes
 
 - `/` — React spreadsheet interface.
-- `/api/health` — JSON health check.
-- `/api/evaluate` — POST workbook JSON, returns `values`, `errors` and `evaluationOrder`.
+- `GET /api/health` — JSON health check. This verifies the health handler only; it does not prove formula evaluation works.
+- `POST /api/evaluate` — accepts a workbook JSON object and returns values, cell errors, evaluation order, tokens, ASTs and dependency lists.
+- `GET /api/evaluate?diagnostic=1` — smoke test for arithmetic, range functions, AST generation and tokens.
 
-## Runtime note
+## Runtime architecture
 
-Vercel runs the frontend as Vite-built static assets and runs the same formula-language behavior in TypeScript serverless functions. The C++17 compiler/evaluator remains in the repository for the compiler-design implementation and command-line/API use outside Vercel. The Vercel API does not execute the C++ binary.
+Vercel serves Vite-built static assets and the TypeScript evaluator in serverless functions. The C++17 compiler/evaluator and native socket API remain in the repository for local compiler-design work, command-line use and local API tests. The hosted Vercel API does not launch the C++ binary, and it does not depend on a process running on the developer's computer.
+
+## Troubleshooting
+
+- If the site itself does not load, inspect the Vercel deployment build and domain assignment.
+- If `/api/health` succeeds but the UI says **Engine offline**, check `POST /api/evaluate`: health and evaluation are separate functions.
+- The frontend displays an **API request failed** diagnostic with the returned HTTP status and response detail.
+- If a Git-based deployment fails with `npm install`/directory errors, verify that Vercel's **Root Directory** is `frontend` and that `package.json` exists at that root.
