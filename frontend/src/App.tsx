@@ -16,7 +16,7 @@ type CompilerStage = "lexical" | "ast" | "dependencies" | "evaluation";
 type AstTreeNode = { id: string; label: string; kind: "operator" | "function" | "reference" | "range" | "number"; children: AstTreeNode[] };
 
 function describeAstLabel(label: string): { kind: AstTreeNode["kind"]; title: string; detail: string } {
-  const match = /^(BinaryOp|FuncCall|CellRef|Range|Number)\\((.*)\\)$/.exec(label.trim());
+  const match = /^(BinaryOp|FuncCall|CellRef|Range|Number)\((.*)\)$/.exec(label.trim());
   if (!match) return { kind: "number", title: label, detail: "AST node" };
   const [, type, value] = match;
   switch (type) {
@@ -29,11 +29,11 @@ function describeAstLabel(label: string): { kind: AstTreeNode["kind"]; title: st
 }
 
 function parseAstTree(source: string): AstTreeNode | null {
-  const lines = source.split(/\\r?\\n/).filter(line => line.trim().length > 0);
+  const lines = source.split(/\r?\n/).filter(line => line.trim().length > 0);
   const roots: AstTreeNode[] = [];
   const stack: Array<{ depth: number; node: AstTreeNode }> = [];
   lines.forEach((line, index) => {
-    const leading = line.match(/^\\s*/)?.[0].length ?? 0;
+    const leading = line.match(/^\s*/)?.[0].length ?? 0;
     const depth = Math.floor(leading / 2);
     const node: AstTreeNode = {
       id: "ast-" + index,
