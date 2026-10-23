@@ -24,16 +24,20 @@ REPORT_PDF = OUT / "CellScript_Assignment_9_Review_2.pdf"
 SOURCE_PDF = OUT / "CellScript_Main_Source_Code.pdf"
 TODAY = date.today().strftime("%d %B %Y")
 
-GREEN = colors.HexColor("#176B4D")
-GREEN2 = colors.HexColor("#2B8A62")
-DARK = colors.HexColor("#172B26")
-INK = colors.HexColor("#24332E")
-MUTED = colors.HexColor("#64756E")
-PALE = colors.HexColor("#EAF5EF")
-PALE2 = colors.HexColor("#F4F8F5")
-BORDER = colors.HexColor("#D6E2DA")
-BLUE = colors.HexColor("#325D8A")
+# Theme adapted from the Review 1 CellScript deck: deep teal, turquoise, white,
+# clean presentation pages, and serif display headings.
+GREEN = colors.HexColor("#0A3035")       # deep teal
+GREEN2 = colors.HexColor("#00C6A8")      # bright turquoise accent
+DARK = colors.HexColor("#0A3035")
+INK = colors.HexColor("#203D40")
+MUTED = colors.HexColor("#668184")
+PALE = colors.HexColor("#E7F6F3")
+PALE2 = colors.HexColor("#F4FAF9")
+BORDER = colors.HexColor("#CEE6E3")
+BLUE = colors.HexColor("#008A9A")
 WHITE = colors.white
+TURQ_PALE = colors.HexColor("#BFEDE5")
+TEAL_MID = colors.HexColor("#0D5960")
 
 # Use bundled OS fonts when available, with standard PDF fonts as fallback.
 font_dir = Path("/usr/share/fonts/truetype/dejavu")
@@ -41,38 +45,52 @@ try:
     pdfmetrics.registerFont(TTFont("DV", str(font_dir / "DejaVuSans.ttf")))
     pdfmetrics.registerFont(TTFont("DV-Bold", str(font_dir / "DejaVuSans-Bold.ttf")))
     pdfmetrics.registerFont(TTFont("DVM", str(font_dir / "DejaVuSansMono.ttf")))
-    FONT, BOLD, MONO = "DV", "DV-Bold", "DVM"
+    pdfmetrics.registerFont(TTFont("DVS", str(font_dir / "DejaVuSerif.ttf")))
+    pdfmetrics.registerFont(TTFont("DVS-Bold", str(font_dir / "DejaVuSerif-Bold.ttf")))
+    FONT, BOLD, MONO, SERIF, SERIF_BOLD = "DV", "DV-Bold", "DVM", "DVS", "DVS-Bold"
 except Exception:
-    FONT, BOLD, MONO = "Helvetica", "Helvetica-Bold", "Courier"
+    FONT, BOLD, MONO, SERIF, SERIF_BOLD = "Helvetica", "Helvetica-Bold", "Courier", "Times-Roman", "Times-Bold"
 
 styles = getSampleStyleSheet()
 styles.add(ParagraphStyle(
-    name="CoverKicker", fontName=BOLD, fontSize=10, leading=14,
-    textColor=GREEN, spaceAfter=10, alignment=TA_LEFT, tracking=1.2
+    name="CoverKicker", fontName=BOLD, fontSize=9.5, leading=14,
+    textColor=GREEN2, spaceAfter=10, alignment=TA_LEFT, tracking=2.0
 ))
 styles.add(ParagraphStyle(
-    name="CoverTitle", fontName=BOLD, fontSize=31, leading=36,
-    textColor=DARK, spaceAfter=9
+    name="CoverTitle", fontName=SERIF_BOLD, fontSize=36, leading=40,
+    textColor=WHITE, spaceAfter=9
 ))
 styles.add(ParagraphStyle(
-    name="CoverSub", fontName=FONT, fontSize=14, leading=20,
-    textColor=MUTED, spaceAfter=16
+    name="CoverSub", fontName=FONT, fontSize=13, leading=18,
+    textColor=TURQ_PALE, spaceAfter=16
 ))
 styles.add(ParagraphStyle(
-    name="Section", fontName=BOLD, fontSize=17, leading=21,
+    name="Section", fontName=SERIF_BOLD, fontSize=16.5, leading=20,
     textColor=DARK, spaceBefore=5, spaceAfter=9, keepWithNext=True
 ))
 styles.add(ParagraphStyle(
-    name="Subsection", fontName=BOLD, fontSize=11.2, leading=14.5,
-    textColor=GREEN, spaceBefore=8, spaceAfter=4, keepWithNext=True
+    name="CoverSection", fontName=SERIF_BOLD, fontSize=16, leading=20,
+    textColor=WHITE, spaceBefore=4, spaceAfter=8, keepWithNext=True
+))
+styles.add(ParagraphStyle(
+    name="Subsection", fontName=SERIF_BOLD, fontSize=11.2, leading=14.5,
+    textColor=TEAL_MID, spaceBefore=8, spaceAfter=4, keepWithNext=True
 ))
 styles.add(ParagraphStyle(
     name="Body2", fontName=FONT, fontSize=9.0, leading=13,
     textColor=INK, spaceAfter=6
 ))
 styles.add(ParagraphStyle(
+    name="CoverBody", fontName=FONT, fontSize=9.0, leading=13,
+    textColor=WHITE, spaceAfter=6
+))
+styles.add(ParagraphStyle(
     name="Small", fontName=FONT, fontSize=7.8, leading=10.5,
     textColor=MUTED, spaceAfter=4
+))
+styles.add(ParagraphStyle(
+    name="CoverSmall", fontName=FONT, fontSize=7.6, leading=10,
+    textColor=TURQ_PALE, spaceAfter=4
 ))
 styles.add(ParagraphStyle(
     name="Bullet2", fontName=FONT, fontSize=8.7, leading=12.1,
@@ -101,7 +119,7 @@ styles.add(ParagraphStyle(
     textColor=INK, spaceAfter=7
 ))
 styles.add(ParagraphStyle(
-    name="SourcePath", fontName=BOLD, fontSize=13, leading=16,
+    name="SourcePath", fontName=SERIF_BOLD, fontSize=13, leading=16,
     textColor=DARK, spaceAfter=4
 ))
 styles.add(ParagraphStyle(
@@ -144,20 +162,30 @@ def make_table(rows, widths, header=True, repeatRows=1, padd=6):
     t.setStyle(TableStyle(ts))
     return t
 
+def draw_mark(canvas, x, y, unit=5.0*mm):
+    # Compact 3x3 tile motif from the Review 1 cover.
+    dark_tile = colors.HexColor("#12454A")
+    tiles = [
+        (0, 0, GREEN2), (1, 0, dark_tile), (2, 0, colors.HexColor("#00AFA1")),
+        (0, 1, dark_tile), (1, 1, colors.HexColor("#008E9B")), (2, 1, dark_tile),
+        (0, 2, colors.HexColor("#00AFA1")), (1, 2, dark_tile), (2, 2, GREEN2),
+    ]
+    size = unit * 0.82
+    for col, row, color in tiles:
+        canvas.setFillColor(color)
+        canvas.rect(x + col*unit, y - row*unit, size, size, stroke=0, fill=1)
+
 def draw_cover(canvas, doc):
     canvas.saveState()
     w, h = A4
-    canvas.setFillColor(colors.HexColor("#F5FAF7"))
-    canvas.rect(0, 0, w, h, stroke=0, fill=1)
     canvas.setFillColor(GREEN)
-    canvas.rect(0, h-15*mm, w, 15*mm, stroke=0, fill=1)
-    canvas.setFillColor(GREEN2)
-    canvas.rect(0, 0, 10*mm, h, stroke=0, fill=1)
-    canvas.setStrokeColor(BORDER)
-    canvas.setLineWidth(1)
+    canvas.rect(0, 0, w, h, stroke=0, fill=1)
+    draw_mark(canvas, 25*mm, h-24*mm, 4.4*mm)
+    canvas.setStrokeColor(colors.HexColor("#17464B"))
+    canvas.setLineWidth(0.8)
     canvas.line(25*mm, 25*mm, w-20*mm, 25*mm)
     canvas.setFont(FONT, 7.5)
-    canvas.setFillColor(MUTED)
+    canvas.setFillColor(TURQ_PALE)
     canvas.drawString(25*mm, 16*mm, "CELLSCRIPT  |  ASSIGNMENT 9  |  REVIEW 2")
     canvas.drawRightString(w-20*mm, 16*mm, TODAY)
     canvas.restoreState()
@@ -165,11 +193,15 @@ def draw_cover(canvas, doc):
 def draw_page(canvas, doc):
     canvas.saveState()
     w, h = A4
-    canvas.setFillColor(GREEN)
-    canvas.rect(0, h-10*mm, w, 10*mm, stroke=0, fill=1)
-    canvas.setFont(BOLD, 7.3)
     canvas.setFillColor(WHITE)
-    canvas.drawString(18*mm, h-6.5*mm, "CELLSCRIPT  /  SECOND REVIEW")
+    canvas.rect(0, 0, w, h, stroke=0, fill=1)
+    canvas.setStrokeColor(GREEN2)
+    canvas.setLineWidth(1.5)
+    canvas.line(18*mm, h-13*mm, w-18*mm, h-13*mm)
+    canvas.setFont(BOLD, 7.3)
+    canvas.setFillColor(TEAL_MID)
+    canvas.drawString(18*mm, h-9.5*mm, "CELLSCRIPT  /  SECOND REVIEW")
+    draw_mark(canvas, w-31*mm, h-8.5*mm, 2.5*mm)
     canvas.setStrokeColor(BORDER)
     canvas.line(18*mm, 14*mm, w-18*mm, 14*mm)
     canvas.setFont(FONT, 7)
@@ -227,18 +259,20 @@ def build_review_pdf():
 
     # Cover
     story += [
-        Spacer(1, 28*mm),
-        P("PROJECT REVIEW  /  ASSIGNMENT 9", "CoverKicker"),
+        Spacer(1, 39*mm),
+        P("BCSE307L  —  COMPILER DESIGN", "CoverKicker"),
         P("CellScript", "CoverTitle"),
-        P("Spreadsheet Formula Compiler and Interactive Compiler Workbench", "CoverSub"),
-        Spacer(1, 4*mm),
-        Table([[""]], colWidths=[174*mm], rowHeights=[2.5*mm], style=TableStyle([
+        P("A Formula-Language Compiler for Spreadsheet Evaluation", "CoverSub"),
+        P("PHASE 2  —  IMPLEMENTATION AND SECOND REVIEW", "CoverKicker"),
+        P("<b>Source code:</b> <link href='https://github.com/Subham9339063436/cellscript' color='#00C6A8'>github.com/Subham9339063436/cellscript</link>", "CoverBody"),
+        Spacer(1, 2*mm),
+        Table([[""]], colWidths=[174*mm], rowHeights=[0.8*mm], style=TableStyle([
             ("BACKGROUND", (0,0), (-1,-1), GREEN2),
         ])),
-        Spacer(1, 12*mm),
-        P("SECOND REVIEW COPY", "Section"),
-        P("Phase 2 implementation report covering the spreadsheet interface, formula-language pipeline, dependency analysis, evaluation, API design, tests, and deployment.", "Body2"),
-        Spacer(1, 8*mm),
+        Spacer(1, 7*mm),
+        P("Second Review | Assignment 9", "CoverSection"),
+        P("Phase 2 implementation report covering the spreadsheet interface, formula-language pipeline, dependency analysis, evaluation, API design, tests, and deployment.", "CoverBody"),
+        Spacer(1, 6*mm),
     ]
     details = [
         [cell("INSTITUTION", "TableCellBold"), cell("Vellore Institute of Technology (VIT), Vellore")],
@@ -251,9 +285,9 @@ def build_review_pdf():
     story.append(make_table(details, [43*mm, 131*mm], header=False, padd=9))
     story += [
         Spacer(1, 12*mm),
-        P("<b>Live application:</b> <link href='https://cellscript.vercel.app' color='#176B4D'>cellscript.vercel.app</link>", "Body2"),
-        P("<b>GitHub repository:</b> <link href='https://github.com/Subham9339063436/cellscript' color='#176B4D'>github.com/Subham9339063436/cellscript</link>", "Body2"),
-        P("<b>Purpose:</b> demonstrate and document the project's current Phase 2 implementation for the second project review.", "Small"),
+        P("<b>Live application:</b> <link href='https://cellscript.vercel.app' color='#00C6A8'>cellscript.vercel.app</link>", "CoverBody"),
+        P("<b>GitHub repository:</b> <link href='https://github.com/Subham9339063436/cellscript' color='#00C6A8'>github.com/Subham9339063436/cellscript</link>", "CoverBody"),
+        P("<b>Purpose:</b> document the current Phase 2 implementation for the second project review.", "CoverSmall"),
         PageBreak(),
     ]
 
@@ -450,42 +484,39 @@ SOURCE_FILES = [
 ]
 
 def draw_source_cover(canvas, doc):
+    # Source appendix follows the same teal-and-turquoise system while keeping
+    # the code pages light for legible monospaced text.
     canvas.saveState()
     w, h = A4
-    canvas.setFillColor(colors.HexColor("#F5FAF7"))
+    canvas.setFillColor(WHITE)
     canvas.rect(0, 0, w, h, stroke=0, fill=1)
     canvas.setFillColor(GREEN)
-    canvas.rect(0, h-15*mm, w, 15*mm, stroke=0, fill=1)
-    canvas.setFillColor(GREEN2)
-    canvas.rect(0, 0, 10*mm, h, stroke=0, fill=1)
-    canvas.setFont(BOLD, 9)
-    canvas.setFillColor(GREEN)
-    canvas.drawString(25*mm, h-37*mm, "ASSIGNMENT 9  /  SOURCE CODE LISTING")
-    canvas.setFont(BOLD, 29)
-    canvas.setFillColor(DARK)
-    canvas.drawString(25*mm, h-57*mm, "CellScript")
-    canvas.setFont(FONT, 13)
+    canvas.rect(0, h-10*mm, w, 10*mm, stroke=0, fill=1)
+    draw_mark(canvas, 16*mm, h-5*mm, 2.4*mm)
+    canvas.setFont(BOLD, 7)
+    canvas.setFillColor(WHITE)
+    canvas.drawString(31*mm, h-6.5*mm, "CELLSCRIPT  /  MAIN SOURCE CODE")
+    canvas.setStrokeColor(GREEN2)
+    canvas.setLineWidth(1.1)
+    canvas.line(16*mm, 14*mm, w-16*mm, 14*mm)
+    canvas.setFont(FONT, 6.8)
     canvas.setFillColor(MUTED)
-    canvas.drawString(25*mm, h-68*mm, "Main project source code")
-    canvas.setFont(FONT, 9)
-    canvas.drawString(25*mm, h-88*mm, "Compiler Design (BCSE307L) | Second Review")
-    canvas.drawString(25*mm, h-96*mm, "Prepared by Subham Hazra | Reg. No. 24BKT0111")
-    canvas.setStrokeColor(BORDER)
-    canvas.line(25*mm, 25*mm, w-20*mm, 25*mm)
-    canvas.setFont(FONT, 7.5)
-    canvas.setFillColor(MUTED)
-    canvas.drawString(25*mm, 16*mm, "Source snapshot: GitHub main branch")
-    canvas.drawRightString(w-20*mm, 16*mm, TODAY)
+    canvas.drawString(16*mm, 8*mm, "Review 2 / Assignment 9")
+    canvas.drawRightString(w-16*mm, 8*mm, TODAY)
     canvas.restoreState()
 
 def source_page(canvas, doc):
     canvas.saveState()
     w, h = A4
-    canvas.setFillColor(GREEN)
-    canvas.rect(0, h-8*mm, w, 8*mm, stroke=0, fill=1)
-    canvas.setFont(BOLD, 7)
     canvas.setFillColor(WHITE)
-    canvas.drawString(16*mm, h-5.5*mm, "CELLSCRIPT / MAIN SOURCE CODE")
+    canvas.rect(0, 0, w, h, stroke=0, fill=1)
+    canvas.setStrokeColor(GREEN2)
+    canvas.setLineWidth(1.1)
+    canvas.line(16*mm, h-10.5*mm, w-16*mm, h-10.5*mm)
+    canvas.setFont(BOLD, 7)
+    canvas.setFillColor(TEAL_MID)
+    canvas.drawString(16*mm, h-7.2*mm, "CELLSCRIPT  /  MAIN SOURCE CODE")
+    draw_mark(canvas, w-26*mm, h-6.5*mm, 2.1*mm)
     canvas.setStrokeColor(BORDER)
     canvas.line(16*mm, 13*mm, w-16*mm, 13*mm)
     canvas.setFont(FONT, 6.8)
