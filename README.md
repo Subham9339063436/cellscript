@@ -135,6 +135,10 @@ curl -X POST http://localhost:8080/evaluate \
 
 The response contains computed `values`, an `errors` map, `evaluationOrder`, token streams, AST representations and dependency lists.
 
+## Production deployment configuration
+
+The Vercel project is configured to build from the `frontend/` directory. This is important because the repository root contains the C++ `Makefile`, while the frontend's `package.json` is located in `frontend/package.json`. For the Git-connected Vercel project use **Root Directory** = `frontend`, **Build Command** = `npm run build`, and **Output Directory** = `dist`. Production frontend requests should use the same-origin `/api/health` and `/api/evaluate` paths; do not configure the production UI to call `localhost:8080`.
+
 ## Deploy to Vercel
 
 The GitHub repository keeps the frontend and Vercel functions in `frontend/`. To connect the repository to a new Vercel project, use:
