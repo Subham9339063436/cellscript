@@ -1,0 +1,67 @@
+name: Live CellScript API diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/live-api-diagnostic.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  evaluator-smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Check hosted health endpoint
+        run: |
+          set -eu
+          curl --fail --silent --show-error --max-time 20 \
+            https://cellscript.vercel.app/api/health | tee health.json
+          python -c 'import json; d=json.load(open("health.json")); assert d.get("status") == "ok", d; print("Health check passed:", d)'
+
+      - name: Run live evaluator diagnostic
+        shell: bash
+        run: |
+          set -u
+          url="https://cellscript.vercel.app/api/evaluate?diagnostic=1"
+          for attempt in $(seq 1 12); do
+            status=$(curl --silent --show-error --max-time 20 -o diagnostic.json -w "%{http_code}" "$url" 2>curl-error.txt || true)
+            echo "Attempt $attempt — HTTP $status"
+            cat diagnostic.json 2>/dev/null || true
+            if [ "$status" = "200" ] && python - <<'PY'
+          import json
+          from pathlib import Path
+          try:
+              data = json.loads(Path("diagnostic.json").read_text())
+              checks = data.get("checks", {})
+              passed = (
+                  data.get("status") == "ok"
+                  and checks.get("arithmetic", {}).get("actual") == 30
+                  and checks.get("arithmetic", {}).get("expected") == 30
+                  and checks.get("rangeFunction", {}).get("actual") == 30
+                  and checks.get("rangeFunction", {}).get("expected") == 30
+                  and checks.get("astGenerated") is True
+                  and checks.get("tokensGenerated") is True
+              )
+              if passed:
+                  print("PASS: arithmetic, range function, AST generation and token generation")
+                  raise SystemExit(0)
+              print("Diagnostic returned an unexpected result:", data)
+          except Exception as exc:
+              print("Could not validate diagnostic response:", exc)
+          raise SystemExit(1)
+          PY
+            then
+              exit 0
+            fi
+            echo "Diagnostic not passing yet; retrying in 10 seconds."
+            cat curl-error.txt 2>/dev/null || true
+            sleep 10
+          done
+          echo "Live evaluator diagnostic failed after 12 attempts."
+          cat diagnostic.json 2>/dev/null || true
+          cat curl-error.txt 2>/dev/null || true
+          exit 1
