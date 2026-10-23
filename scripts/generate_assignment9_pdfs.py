@@ -92,7 +92,7 @@ styles.add(ParagraphStyle(
     textColor=DARK
 ))
 styles.add(ParagraphStyle(
-    name="Code", fontName=MONO, fontSize=5.8, leading=7.1,
+    name="CodeBlockStyle", fontName=MONO, fontSize=5.8, leading=7.1,
     textColor=colors.HexColor("#1F322B"), leftIndent=0, rightIndent=0,
     spaceAfter=0, splitLongWords=1
 ))
@@ -553,7 +553,7 @@ def build_source_pdf():
                 story.append(P(escape(item) + " (continued)", "SourcePath"))
                 story.append(P(f"Source lines continued from the previous page.", "SourceMeta"))
             block = "\n".join(wrapped[start:start+chunk_size])
-            story.append(Preformatted(block, styles["Code"], maxLineLength=145))
+            story.append(Preformatted(block, styles["CodeBlockStyle"], maxLineLength=145))
         story.append(PageBreak())
 
     doc.build(story, onFirstPage=draw_source_cover, onLaterPages=source_page)
