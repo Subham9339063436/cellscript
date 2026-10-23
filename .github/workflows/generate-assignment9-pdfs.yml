@@ -1,0 +1,35 @@
+name: Generate Assignment 9 PDFs
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "scripts/generate_assignment9_pdfs.py"
+      - ".github/workflows/generate-assignment9-pdfs.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PDF dependency
+        run: python -m pip install reportlab
+      - name: Generate PDFs
+        run: python scripts/generate_assignment9_pdfs.py
+      - name: Upload generated PDFs
+        uses: actions/upload-artifact@v4
+        with:
+          name: cellscript-assignment9-pdfs
+          path: output/*.pdf
+          if-no-files-found: error
+          retention-days: 7
